@@ -80,7 +80,13 @@ driver, ADS1115 via Adafruit ADS1X15. Board target `esp32dev`.
   a PGN 130306 frame from source 35 every 100 ms.
 - **SignalK / Orca:** apparent wind angle & speed populate and read correctly.
 
-## License & credits
+## License
 
-Open firmware forked from the structure of the Hat Labs HALMET example firmware.
+Licensed under the **Apache License 2.0** — see [LICENSE](LICENSE). This is the same
+license as the Hat Labs HALMET example firmware and the SensESP framework it builds on,
+keeping everything license-compatible.
+
+## Credits
+
+Forked from the structure of the Hat Labs HALMET example firmware; built on SensESP.
 Not affiliated with Raymarine or Orca. Built with [Claude Code](https://claude.com/claude-code).

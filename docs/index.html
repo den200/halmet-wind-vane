@@ -139,16 +139,16 @@
   <div class="wrap">
     <span class="eyebrow">⛵ Open marine firmware · NMEA 2000</span>
     <h1>The wind display died.<br><span class="accent">The masthead didn't.</span></h1>
-    <p class="lede">A Hat Labs <b>HALMET</b> board reads a legacy Raymarine <b>ST60+</b> masthead's raw sin/cos and cup-pulse signals directly, and republishes apparent wind onto the boat's <b>NMEA 2000</b> backbone — no mast climb, no new sensor, no display head.</p>
+    <p class="lede">High on the mast, the wind sensor was still spinning happily — but the screen that used to read it had died. Instead of climbing the mast or buying a whole new system, a small <b>HALMET</b> board listens to the old sensor directly and speaks its readings to the boat's modern network (<b>NMEA 2000</b>).</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/den200/halmet-wind-vane">★ View on GitHub</a>
       <a class="btn ghost" href="#how">How it works ↓</a>
     </div>
     <div class="stat-row">
-      <div class="stat"><b>130306</b><span>PGN — Wind Data (Apparent)</span></div>
-      <div class="stat"><b>10&nbsp;Hz</b><span>transmit rate on the bus</span></div>
-      <div class="stat"><b>16-bit</b><span>ADS1115 sin/cos sampling</span></div>
-      <div class="stat"><b>0×</b><span>mast climbs required</span></div>
+      <div class="stat"><b>10×/s</b><span>wind readings sent to the boat</span></div>
+      <div class="stat"><b>3 wires</b><span>tapped from the old mast cable</span></div>
+      <div class="stat"><b>0</b><span>mast climbs needed</span></div>
+      <div class="stat"><b>~€60</b><span>for the little bridge board</span></div>
     </div>
   </div>
 </header>
@@ -158,20 +158,20 @@
   <div class="wrap">
     <p class="kicker">The problem</p>
     <h2>A healthy sensor trapped behind a dead screen</h2>
-    <p class="lead">Raymarine's ST60+ wind instrument is two separate things on one cable: a masthead transducer up the mast, and a display head at the helm. On this boat the <b>display head failed</b> — but the masthead, 15&nbsp;m up, was still perfectly alive, spinning and pointing. Replacing it means a mast climb and a whole new instrument system. The masthead just needed something new to listen to it.</p>
+    <p class="lead">The old Raymarine ST60+ wind instrument is really two things sharing one cable: a <b>sensor at the top of the mast</b>, and a <b>display at the helm</b> that knows how to read it. On this boat the display died — but the sensor, 15&nbsp;m up, was perfectly fine, still pointing and spinning. Replacing it would mean a trip up the mast and a whole new set of instruments. It just needed something new to listen to it.</p>
     <div class="story" style="margin-top:26px">
       <div class="panel dead">
         <span class="tag bad">✗ Dead</span>
         <h3 style="margin:.1em 0 .3em">The ST60+ display head</h3>
-        <p style="color:#6a4f4f">The helm display gave up. With it went the only thing that knew how to decode the masthead — and the only path wind had onto the boat's electronics.</p>
+        <p style="color:#6a4f4f">The helm screen gave up. And because it was the only thing that knew how to read the mast sensor, the boat lost its wind readings completely.</p>
       </div>
       <div class="panel alive">
         <span class="tag good">✓ Alive</span>
         <h3 style="margin:.1em 0 .3em">The masthead transducer</h3>
-        <p style="color:#3f6258">A sine/cosine resolver for wind <em>angle</em> and a cup anemometer pulsing for wind <em>speed</em>. Healthy, calibrated by years aloft, and speaking a simple analog language — if you know how to read it.</p>
+        <p style="color:#3f6258">A vane that swings to point into the wind (that's the <em>direction</em>) and little cups that spin faster as it blows harder (that's the <em>speed</em>). Old, sturdy, still accurate — and speaking a simple electrical language, if you know how to listen.</p>
       </div>
     </div>
-    <div class="callout"><b>The modern half of the boat:</b> an Orca Core 2 and the rest of the electronics live on a <b>NMEA 2000</b> backbone — which never spoke ST60+. The job: bridge the old masthead to the new bus.</div>
+    <div class="callout"><b>The modern half of the boat:</b> an Orca Core 2 chartplotter and the rest of the gear all talk over a shared digital network called <b>NMEA 2000</b> — a language the old ST60+ never spoke. The whole job was to translate between the two.</div>
   </div>
 </section>
 
@@ -179,45 +179,45 @@
 <section id="how" class="alt">
   <div class="wrap">
     <p class="kicker">How it works</p>
-    <h2>From an analog resolver to a digital PGN, in two pipelines</h2>
-    <p class="lead">The HALMET board taps three wires off the masthead. Two carry the sin/cos voltages that encode the vane angle; one pulses with the cups. The firmware turns them into calibrated apparent wind and puts it on the wire as PGN 130306, ten times a second.</p>
+    <h2>Turning the old sensor's signals into a message the boat understands</h2>
+    <p class="lead">The board taps just three wires from the existing mast cable. Two of them describe the wind <b>angle</b>; the third <b>ticks</b> along with the spinning cups. From those, the firmware works out the wind's direction and speed and announces them on the boat's network — ten times every second.</p>
 
     <div class="pipe">
       <div class="lane">
-        <div class="lane-label"><span class="dot" style="background:var(--teal)"></span> Wind angle &nbsp;·&nbsp; sin/cos resolver</div>
+        <div class="lane-label"><span class="dot" style="background:var(--teal)"></span> Wind angle &nbsp;·&nbsp; from the vane</div>
         <div class="node"><div class="t">A1 / A2</div><div class="s">sin · cos</div></div>
         <span class="arrow">→</span>
-        <div class="node"><div class="t">ADS1115</div><div class="s">16-bit, GAIN_ONE</div></div>
+        <div class="node"><div class="t">Measure</div><div class="s">precise voltmeter</div></div>
         <span class="arrow">→</span>
         <div class="node"><div class="t">Centre</div><div class="s">(V − Vmid)/A</div></div>
         <span class="arrow">→</span>
-        <div class="node"><div class="t">atan2(s,c)</div><div class="s">SinCosAngle</div></div>
+        <div class="node"><div class="t">Work out angle</div><div class="s">compare the two</div></div>
         <span class="arrow">→</span>
-        <div class="node"><div class="t">Smooth</div><div class="s">MovingAverage(5)</div></div>
+        <div class="node"><div class="t">Smooth</div><div class="s">average of 5</div></div>
         <span class="arrow">→</span>
-        <div class="node out"><div class="t">AWA</div><div class="s">angleApparent</div></div>
+        <div class="node out"><div class="t">Wind angle</div><div class="s">done</div></div>
       </div>
       <div class="lane">
-        <div class="lane-label"><span class="dot" style="background:var(--amber)"></span> Wind speed &nbsp;·&nbsp; cup-anemometer pulse</div>
+        <div class="lane-label"><span class="dot" style="background:var(--amber)"></span> Wind speed &nbsp;·&nbsp; from the spinning cups</div>
         <div class="node"><div class="t">D1 (GPIO23)</div><div class="s">pulse · RISING</div></div>
         <span class="arrow">→</span>
-        <div class="node"><div class="t">Counter</div><div class="s">500 ms window</div></div>
+        <div class="node"><div class="t">Count ticks</div><div class="s">every ½ second</div></div>
         <span class="arrow">→</span>
-        <div class="node"><div class="t">Frequency</div><div class="s">Hz</div></div>
+        <div class="node"><div class="t">Ticks/sec</div><div class="s">how fast</div></div>
         <span class="arrow">→</span>
         <div class="node"><div class="t">× K</div><div class="s">0.5144 m/s·Hz⁻¹</div></div>
         <span class="arrow">→</span>
-        <div class="node out"><div class="t">AWS</div><div class="s">speedApparent</div></div>
+        <div class="node out"><div class="t">Wind speed</div><div class="s">done</div></div>
       </div>
       <div class="lane">
-        <div class="lane-label"><span class="dot" style="background:var(--sky)"></span> Output &nbsp;·&nbsp; latched values, two destinations</div>
+        <div class="lane-label"><span class="dot" style="background:var(--sky)"></span> Sent out &nbsp;·&nbsp; the same reading, two ways</div>
         <div class="node out" style="background:linear-gradient(135deg,#0f8a7e,#19b5a6)"><div class="t">NMEA 2000 — PGN 130306</div><div class="s">apparent · 10 Hz · src 35 (primary)</div></div>
         <span class="arrow">→</span>
-        <div class="node"><div class="t">SignalK / WiFi</div><div class="s">environment.wind.* (secondary)</div></div>
+        <div class="node"><div class="t">WiFi</div><div class="s">phones &amp; dashboards</div></div>
       </div>
     </div>
 
-    <div class="callout" style="margin-top:30px"><b>Why sin/cos &amp; atan2?</b> The masthead encodes angle as two voltages — one tracks the sine of the vane angle, the other the cosine. Recovering the angle is just <code>atan2(sin, cos)</code>. Because atan2 is scale-invariant, calibration only has to <em>centre</em> each channel (subtract its mid-voltage); a magnitude guard reports "no data" instead of a stuck angle if the masthead falls silent.
+    <div class="callout" style="margin-top:30px"><b>Why two voltages for one angle?</b> The vane doesn't report its angle as a single number. Instead it sends two voltages that rise and fall as it turns — a bit like how the length <em>and</em> direction of a sundial's shadow together tell you the time. Comparing the two pins down exactly which way the vane is pointing. A neat bonus: if the sensor ever falls silent, the board notices and reports <em>"no reading"</em> rather than a frozen, misleading angle.
     </div>
   </div>
 </section>
@@ -229,13 +229,13 @@
     <h2>Three signal wires, one buck, one bus tap</h2>
     <div class="twocol" style="margin-top:10px">
       <div>
-        <p class="lead" style="margin-bottom:18px">The <b>Hat Labs HALMET</b> is purpose-built for exactly this: ±32&nbsp;V-tolerant Schmitt-triggered digital inputs, an external 16-bit ADS1115 on the analog inputs, and the ESP32's built-in CAN (TWAI) for NMEA 2000. It draws its own power from the backbone. The masthead's 8&nbsp;V comes from a small external buck — the one part you must set <em>before</em> wiring anything.</p>
+        <p class="lead" style="margin-bottom:18px">The <b>Hat Labs HALMET</b> is a small board made for exactly this kind of job. It shrugs off the rough, noisy voltages you find on a boat, reads the sensor with a precise voltmeter chip, and plugs straight into the NMEA 2000 network — drawing its own power from it, too. The only extra part is a small adjustable power supply that gives the mast sensor its 8&nbsp;volts — and that's the one thing you must set <em>before</em> wiring anything.</p>
         <ul class="ticks">
-          <li><b>Board:</b> HALMET (ESP32-WROOM-32E, TWAI CAN @ 250&nbsp;kbit/s)</li>
-          <li><b>Analog:</b> ADS1115 16-bit ADC, fixed 10:1 input divider</li>
-          <li><b>Pulse:</b> hardware Schmitt trigger, no debounce needed</li>
-          <li><b>Masthead power:</b> external MP1584 buck set to <b>8.0 V</b></li>
-          <li><b>Bus:</b> powered from N2K; on-board 120&nbsp;Ω terminator left open</li>
+          <li>A small <b>HALMET</b> board — a tiny computer with the boat-network connection built in</li>
+          <li>Reads the wind angle with a <b>precise 16-bit voltmeter</b> chip</li>
+          <li>Counts the speed pulses in hardware — rock-steady, no false ticks</li>
+          <li>Powers the mast sensor from a small adjustable supply set to <b>8.0 V</b></li>
+          <li>Runs off the boat network itself — no separate power supply needed</li>
         </ul>
       </div>
       <div>
@@ -249,7 +249,7 @@
             <tr><td><span class="swatch" style="background:#f2b134"></span>Yellow</td><td>speed pulse</td><td>D1 · GPIO23</td></tr>
           </tbody>
         </table>
-        <div class="callout"><b>⚠ Set the buck to 8.0 V first.</b> These cheap modules ship at ~20&nbsp;V — enough to cook the masthead. Trim it with a multimeter on the bench, output disconnected, before the Red wire ever goes near it.</div>
+        <div class="callout"><b>⚠ Set the power supply to 8.0 V first.</b> These cheap adjustable supplies arrive set to about 20&nbsp;V — more than enough to fry the mast sensor. Dial it down to 8.0&nbsp;V with a meter, nothing connected to the output, before the red wire ever goes near it.</div>
       </div>
     </div>
   </div>
@@ -259,17 +259,18 @@
 <section class="alt">
   <div class="wrap">
     <p class="kicker">The software</p>
-    <h2>SensESP v3, and calibration you never reflash for</h2>
-    <p class="lead">Built on <b>SensESP v3</b> (PlatformIO / pioarduino) with the <b>NMEA2000</b> library on the ESP32 TWAI driver. Every tunable — angle zero, direction, channel centres, the speed constant — is a live web-UI field at <code>http://halmet-wind.local/</code>, persisted to flash. You calibrate by sailing, not by recompiling.</p>
+    <h2>Tune it from a browser — no laptop, no re-flashing</h2>
+    <p class="lead">The firmware is built on <b>SensESP</b>, an open-source toolkit for boat sensors. Every adjustment — which way is "straight ahead", the direction of rotation, the speed scale — is a simple field on a web page the board hosts itself at <code>http://halmet-wind.local/</code>. You fine-tune it by sailing and typing numbers into a browser, never by plugging in a computer.</p>
 
     <div class="grid g3" style="margin-top:24px">
-      <div class="card"><div class="ic">🧭</div><h3>Angle, aligned live</h3><p>Set the zero to the bow and flip direction with a single <code>sin_sign</code> field if the wind reads backward — no wire-swapping up the mast.</p></div>
-      <div class="card"><div class="ic">🌀</div><h3>Speed, by ellipse-fit</h3><p>With the mast up, the sin/cos centres come from an ellipse fit on logged free-rotation data; speed K is trimmed against GPS in calm air.</p></div>
-      <div class="card"><div class="ic">📡</div><h3>One source of truth</h3><p>Apparent wind only — true wind is left for the chartplotter or SignalK to derive. No feedback loops, one authoritative PGN 130306.</p></div>
+      <div class="card"><div class="ic">🧭</div><h3>Point it at the bow</h3><p>Tell it which way is forward, and flip the rotation with one setting if the wind ever reads backwards — no rewiring up the mast.</p></div>
+      <div class="card"><div class="ic">🌀</div><h3>Calibrate by sailing</h3><p>With the mast up, the angle is dialled in from readings logged while the vane swings freely; the speed is checked against your GPS in calm air.</p></div>
+      <div class="card"><div class="ic">📡</div><h3>One honest source</h3><p>It reports only the wind you actually feel on deck, and leaves "true wind" for the chartplotter to work out — so there's one clear source and no confusing duplicates.</p></div>
     </div>
 
     <div style="margin-top:30px">
-      <pre><span class="c-cm">// PGN 130306 every 100 ms from the latched, calibrated values.</span>
+      <p class="lead" style="margin-bottom:14px">For the curious, the core is tiny — ten times a second it wraps up the latest reading and drops it onto the network:</p>
+      <pre><span class="c-cm">// Every 100 ms: package the latest calibrated wind reading and send it.</span>
 <span class="c-cm">// Angle is converted from SignalK's −π..+π to N2K's 0..2π; NaN → N2kDoubleNA.</span>
 event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</span>, []() {
   tN2kMsg msg;
@@ -293,16 +294,16 @@ event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</spa
       <div class="card">
         <h3>What works</h3>
         <ul class="ticks">
-          <li>PGN 130306 on the backbone at a steady <b>10 Hz</b>, source address 35</li>
-          <li>Apparent wind angle &amp; speed on the <b>Orca Core 2</b> and any N2K display</li>
-          <li>Same values on <b>SignalK</b> over WiFi for dashboards &amp; logging</li>
-          <li>All four calibration parameters tunable live in the browser</li>
-          <li>Bench-validated, then proven on the water</li>
+          <li>Wind on the boat's network at a steady <b>10 readings a second</b></li>
+          <li>Direction &amp; speed showing on the <b>Orca Core 2</b> and any other display</li>
+          <li>The same readings over <b>WiFi</b> for phone apps and dashboards</li>
+          <li>Every adjustment tweakable live in a browser — no laptop aboard</li>
+          <li>Tested on the bench, then proven out on the water</li>
         </ul>
       </div>
       <div class="card" style="background:linear-gradient(160deg,#0b1f33,#10263d);color:#dceaf3;border:none">
         <h3 style="color:#fff">Bill of the idea</h3>
-        <p style="color:#bcd2e0">No mast climb. No replacement masthead. No proprietary display. A ~€60 board, a buck converter, three wires off an existing cable, and open firmware — turning a decade-old transducer into a first-class citizen of a modern NMEA 2000 network.</p>
+        <p style="color:#bcd2e0">No mast climb. No replacement sensor. No pricey proprietary display. Just a ~€60 board, a small power supply, three wires off the existing cable, and open-source firmware — giving a decade-old wind sensor a full second life on a modern boat network.</p>
         <div class="chips" style="margin-top:14px">
           <span class="chip">ESP32 / HALMET</span><span class="chip">SensESP v3</span>
           <span class="chip">NMEA 2000</span><span class="chip">ADS1115</span>
@@ -317,8 +318,8 @@ event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</spa
   <div class="wrap">
     <div>
       <h4>HALMET Wind</h4>
-      <p style="margin:.2em 0;max-width:42ch">Open firmware reviving a Raymarine ST60+ masthead wind transducer onto NMEA 2000. V1.</p>
-      <p class="fine">Built with Claude Code. Hardware by Hat Labs. Not affiliated with Raymarine or Orca.</p>
+      <p style="margin:.2em 0;max-width:42ch">Open-source firmware giving a Raymarine ST60+ mast wind sensor a second life on NMEA 2000. V1.</p>
+      <p class="fine">Apache 2.0 licensed — like the Hat Labs firmware it builds on. Hardware by Hat Labs. Built with Claude Code. Not affiliated with Raymarine or Orca.</p>
     </div>
     <div>
       <h4>Links</h4>
