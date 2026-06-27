@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>HALMET Wind — reviving a Raymarine ST60+ wind vane onto NMEA 2000</title>
-<meta name="description" content="The ST60+ wind display died but the wind vane at the top of the mast lived. A Hat Labs HALMET board reads the old vane and cups directly and republishes apparent wind as NMEA 2000 PGN 130306 — no mast climb, no new sensor." />
+<meta name="description" content="The wind display on my boat died, but the sensor at the top of the mast was perfectly fine. Here's how I got it talking to the modern NMEA 2000 network instead of climbing the mast for a new one." />
 <style>
   :root{
     --navy:#0b1f33; --navy2:#10263d; --ink:#0a1722;
@@ -16,10 +16,11 @@
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--paper);line-height:1.65;-webkit-font-smoothing:antialiased}
+  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--paper);line-height:1.7;-webkit-font-smoothing:antialiased}
   a{color:var(--teal-d);text-decoration:none}
   a:hover{text-decoration:underline}
-  .wrap{max-width:1060px;margin:0 auto;padding:0 22px}
+  .wrap{max-width:760px;margin:0 auto;padding:0 22px}
+  .wrap.wide{max-width:1000px}
   h1,h2,h3{line-height:1.18;letter-spacing:-.01em}
   code,kbd{font-family:var(--mono);font-size:.92em}
 
@@ -28,61 +29,31 @@
     background:radial-gradient(1200px 500px at 80% -10%,rgba(25,181,166,.30),transparent 60%),
                radial-gradient(900px 500px at 0% 0%,rgba(82,199,232,.18),transparent 55%),
                linear-gradient(160deg,var(--navy),var(--navy2));
-    color:#eaf2f8;padding:74px 0 84px;position:relative;overflow:hidden;border-bottom:1px solid #0a1828;
+    color:#eaf2f8;padding:78px 0 84px;position:relative;overflow:hidden;border-bottom:1px solid #0a1828;
   }
   .hero .wrap{position:relative;z-index:2}
-  .eyebrow{display:inline-flex;gap:9px;align-items:center;font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;
-    color:#bfe7e0;background:rgba(25,181,166,.13);border:1px solid rgba(25,181,166,.34);padding:6px 13px;border-radius:999px}
-  .hero h1{font-size:clamp(2.1rem,5.2vw,3.5rem);margin:.5em 0 .3em;color:#fff;font-weight:800}
+  .eyebrow{display:inline-flex;gap:9px;align-items:center;font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;
+    color:#bfe7e0;opacity:.9}
+  .hero h1{font-size:clamp(2.1rem,5.2vw,3.3rem);margin:.5em 0 .35em;color:#fff;font-weight:800}
   .hero h1 .accent{background:linear-gradient(90deg,var(--teal),var(--sky));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p.lede{font-size:clamp(1.05rem,2.1vw,1.32rem);max-width:50ch;color:#cdddea;margin:.2em 0 1.7em}
-  .cta{display:flex;gap:14px;flex-wrap:wrap}
-  .btn{display:inline-flex;align-items:center;gap:9px;padding:12px 20px;border-radius:11px;font-weight:650;font-size:.98rem;transition:transform .12s ease,box-shadow .12s ease}
-  .btn.primary{background:linear-gradient(90deg,var(--teal),var(--teal-d));color:#04131a;box-shadow:0 8px 22px rgba(25,181,166,.34)}
-  .btn.ghost{background:rgba(255,255,255,.06);color:#eaf2f8;border:1px solid rgba(255,255,255,.22)}
-  .btn:hover{transform:translateY(-2px);text-decoration:none}
-  .hero-vane{position:absolute;right:-40px;top:50%;transform:translateY(-50%);width:380px;height:380px;opacity:.9;z-index:1}
-  @media(max-width:820px){.hero-vane{display:none}}
-
-  .stat-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px}
-  .stat{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:14px 18px;min-width:140px}
-  .stat b{display:block;font-size:1.5rem;color:#fff;font-weight:750}
-  .stat span{font-size:.82rem;color:#a9c3d4}
+  .hero p.lede{font-size:clamp(1.08rem,2.1vw,1.3rem);max-width:54ch;color:#cdddea;margin:.2em 0 1.6em;line-height:1.6}
+  .hero a.repo{display:inline-flex;align-items:center;gap:9px;padding:11px 18px;border-radius:11px;font-weight:600;font-size:.96rem;
+    background:rgba(255,255,255,.06);color:#eaf2f8;border:1px solid rgba(255,255,255,.22)}
+  .hero a.repo:hover{text-decoration:none;background:rgba(255,255,255,.11)}
+  .hero-vane{position:absolute;right:-30px;top:50%;transform:translateY(-50%);width:340px;height:340px;opacity:.85;z-index:1}
+  @media(max-width:880px){.hero-vane{display:none}}
 
   /* ---- Sections ---- */
-  section{padding:64px 0}
+  section{padding:56px 0}
   section.alt{background:linear-gradient(180deg,#fff,#f0f5fa)}
-  .kicker{color:var(--teal-d);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.78rem;margin:0 0 8px}
-  section h2{font-size:clamp(1.6rem,3.4vw,2.2rem);margin:0 0 .35em}
-  .lead{font-size:1.12rem;color:var(--muted);max-width:65ch}
-
-  .grid{display:grid;gap:20px}
-  .g2{grid-template-columns:repeat(2,1fr)}
-  .g3{grid-template-columns:repeat(3,1fr)}
-  @media(max-width:760px){.g2,.g3{grid-template-columns:1fr}}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:var(--shadow)}
-  .card h3{margin:.1em 0 .4em;font-size:1.16rem}
-  .card p{margin:.3em 0;color:#33424f}
-  .card .ic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;font-size:1.3rem;
-    background:linear-gradient(135deg,rgba(25,181,166,.16),rgba(82,199,232,.16));margin-bottom:12px}
-
-  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:34px;align-items:center}
-  @media(max-width:820px){.twocol{grid-template-columns:1fr}}
-
-  /* ---- Problem / story ---- */
-  .story{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  @media(max-width:760px){.story{grid-template-columns:1fr}}
-  .story .panel{border-radius:16px;padding:24px;border:1px solid var(--line)}
-  .panel.dead{background:linear-gradient(180deg,#fff,#fbf0f0);border-color:#f0d2d2}
-  .panel.alive{background:linear-gradient(180deg,#fff,#eefaf6);border-color:#cdeee6}
-  .tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:999px;margin-bottom:10px}
-  .tag.bad{background:#fae3e3;color:#b03a3a}
-  .tag.good{background:#d9f3eb;color:#0e7d6f}
+  section h2{font-size:clamp(1.5rem,3.2vw,2rem);margin:0 0 .7em}
+  section p{font-size:1.09rem;color:#2c3a47;margin:0 0 1.1em}
+  section p .muted{color:var(--muted)}
 
   /* ---- Pipeline diagram ---- */
-  .pipe{display:flex;flex-direction:column;gap:26px;margin-top:14px}
+  .pipe{display:flex;flex-direction:column;gap:26px;margin:30px 0 6px}
   .lane{display:flex;align-items:stretch;gap:12px;flex-wrap:wrap}
-  .lane-label{flex:0 0 100%;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:9px}
+  .lane-label{flex:0 0 100%;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:9px;font-size:.96rem}
   .lane-label .dot{width:10px;height:10px;border-radius:50%}
   .node{flex:1 1 150px;min-width:130px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 4px 12px rgba(11,31,51,.05);position:relative}
   .node .t{font-weight:680;font-size:.95rem}
@@ -92,31 +63,28 @@
   .arrow{align-self:center;color:var(--teal-d);font-size:1.3rem;font-weight:700;flex:0 0 auto}
   @media(max-width:760px){.arrow{transform:rotate(90deg)}.node{flex:1 1 100%}}
 
-  /* ---- Wiring table ---- */
-  table{width:100%;border-collapse:collapse;font-size:.95rem;background:#fff;border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  /* ---- Tables ---- */
+  table{width:100%;border-collapse:collapse;font-size:.95rem;background:#fff;border-radius:14px;overflow:hidden;box-shadow:var(--shadow);margin:6px 0 4px}
   th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}
   th{background:var(--navy);color:#dceaf3;font-weight:600;font-size:.82rem;letter-spacing:.04em;text-transform:uppercase}
   tr:last-child td{border-bottom:none}
   .swatch{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:8px;vertical-align:-1px;border:1px solid rgba(0,0,0,.15)}
 
   /* ---- Code ---- */
-  pre{background:var(--ink);color:#d7e3ee;border-radius:14px;padding:20px 22px;overflow-x:auto;font-family:var(--mono);font-size:.86rem;line-height:1.6;box-shadow:var(--shadow)}
+  pre{background:var(--ink);color:#d7e3ee;border-radius:14px;padding:20px 22px;overflow-x:auto;font-family:var(--mono);font-size:.85rem;line-height:1.6;box-shadow:var(--shadow)}
   .c-key{color:#6cd0c2}.c-fn{color:#7fc7ee}.c-num{color:#f2b134}.c-cm{color:#6b8196;font-style:italic}.c-str{color:#e6a77a}
 
-  ul.ticks{list-style:none;padding:0;margin:.4em 0}
-  ul.ticks li{padding-left:30px;position:relative;margin:.5em 0;color:#33424f}
-  ul.ticks li::before{content:"";position:absolute;left:0;top:.55em;width:14px;height:8px;border-left:2.5px solid var(--teal);border-bottom:2.5px solid var(--teal);transform:rotate(-45deg)}
-
-  .callout{border-left:4px solid var(--amber);background:#fffaf0;border-radius:0 12px 12px 0;padding:16px 20px;margin:18px 0;color:#5a4a1f}
+  .callout{border-left:4px solid var(--amber);background:#fffaf0;border-radius:0 12px 12px 0;padding:15px 20px;margin:22px 0;color:#5a4a1f;font-size:1.02rem;line-height:1.6}
   .callout b{color:#3f3414}
+
+  .pull{font-size:1.28rem;line-height:1.45;color:var(--navy);font-weight:600;margin:34px 0;padding-left:20px;border-left:3px solid var(--teal)}
 
   footer{background:var(--navy);color:#b7cddc;padding:46px 0 38px;border-top:1px solid #0a1828}
   footer .wrap{display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:flex-start}
   footer h4{color:#fff;margin:0 0 10px;font-size:1rem}
+  footer p{font-size:.92rem;margin:.2em 0}
   footer a{color:#7fd6cb}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
-  .chip{font-family:var(--mono);font-size:.78rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);color:#cfe0ec;padding:5px 11px;border-radius:8px}
-  .fine{color:#6f8a9e;font-size:.82rem;margin-top:26px}
+  .fine{color:#6f8a9e;font-size:.82rem;margin-top:22px}
 </style>
 </head>
 <body>
@@ -137,50 +105,29 @@
     <circle cx="100" cy="100" r="7" fill="#fff"/>
   </svg>
   <div class="wrap">
-    <span class="eyebrow">⛵ Open marine firmware · NMEA 2000</span>
+    <span class="eyebrow">⛵ A boat project</span>
     <h1>The wind display died.<br><span class="accent">The vane up the mast didn't.</span></h1>
-    <p class="lede">High on the mast, the wind sensor was still spinning happily — but the screen that used to read it had died. Instead of climbing the mast or buying a whole new system, a small <b>HALMET</b> board listens to the old sensor directly and speaks its readings to the boat's modern network (<b>NMEA 2000</b>).</p>
-    <div class="cta">
-      <a class="btn primary" href="https://github.com/den200/halmet-wind-vane">★ View on GitHub</a>
-      <a class="btn ghost" href="#how">How it works ↓</a>
-    </div>
-    <div class="stat-row">
-      <div class="stat"><b>10×/s</b><span>wind readings sent to the boat</span></div>
-      <div class="stat"><b>3 wires</b><span>tapped from the old mast cable</span></div>
-      <div class="stat"><b>0</b><span>mast climbs needed</span></div>
-      <div class="stat"><b>~€60</b><span>for the little bridge board</span></div>
-    </div>
+    <p class="lede">One day the old ST60+ wind display at the helm just went dark. I assumed the whole instrument was gone — but it turned out only the screen had died. The sensor at the top of the mast was still up there, still spinning, with nothing left to listen to it. This is how I got it talking again.</p>
+    <a class="repo" href="https://github.com/den200/halmet-wind-vane">The whole thing is on GitHub →</a>
   </div>
 </header>
 
-<!-- STORY -->
+<!-- 1 — Only the screen died -->
 <section id="story">
   <div class="wrap">
-    <p class="kicker">The problem</p>
-    <h2>A healthy sensor trapped behind a dead screen</h2>
-    <p class="lead">The old Raymarine ST60+ wind instrument is really two things sharing one cable: a <b>sensor at the top of the mast</b>, and a <b>display at the helm</b> that knows how to read it. On this boat the display died — but the sensor, 15&nbsp;m up, was perfectly fine, still pointing and spinning. Replacing it would mean a trip up the mast and a whole new set of instruments. It just needed something new to listen to it.</p>
-    <div class="story" style="margin-top:26px">
-      <div class="panel dead">
-        <span class="tag bad">✗ Dead</span>
-        <h3 style="margin:.1em 0 .3em">The ST60+ display head</h3>
-        <p style="color:#6a4f4f">The helm screen gave up. And because it was the only thing that knew how to read the mast sensor, the boat lost its wind readings completely.</p>
-      </div>
-      <div class="panel alive">
-        <span class="tag good">✓ Alive</span>
-        <h3 style="margin:.1em 0 .3em">The wind vane &amp; cups</h3>
-        <p style="color:#3f6258">A vane that swings to point into the wind (that's the <em>direction</em>) and little cups that spin faster as it blows harder (that's the <em>speed</em>). Old, sturdy, still accurate — and speaking a simple electrical language, if you know how to listen.</p>
-      </div>
-    </div>
-    <div class="callout"><b>The modern half of the boat:</b> an Orca Core 2 chartplotter and the rest of the gear all talk over a shared digital network called <b>NMEA 2000</b> — a language the old ST60+ never spoke. The whole job was to translate between the two.</div>
+    <h2>Only the screen died</h2>
+    <p>A Raymarine ST60+ is really two boxes sharing one cable: a sensor up the mast, and a display at the helm that knows how to read it. The display is the part that gave up. The sensor — a little vane for wind direction, three cups for wind speed — was completely fine. Fifteen metres up, perfectly happy, and suddenly completely deaf, because the only thing that ever understood it was the dead screen.</p>
+    <p>Meanwhile the rest of the boat had moved on. The Orca and everything else talk to each other over NMEA 2000, a network the 90s-era ST60+ never spoke a word of. So nothing was actually broken except a screen. The job wasn't to repair anything — it was to <em>translate</em>: read the old sensor's signals directly, and put the wind back onto the network everything else already uses.</p>
+    <p class="pull">It just needed something new to listen to it.</p>
   </div>
 </section>
 
-<!-- HOW IT WORKS -->
+<!-- 2 — Reading an old vane -->
 <section id="how" class="alt">
-  <div class="wrap">
-    <p class="kicker">How it works</p>
-    <h2>Turning the old sensor's signals into a message the boat understands</h2>
-    <p class="lead">The board taps just three wires from the existing mast cable. Two of them describe the wind <b>angle</b>; the third <b>ticks</b> along with the spinning cups. From those, the firmware works out the wind's direction and speed and announces them on the boat's network — ten times every second.</p>
+  <div class="wrap wide">
+    <h2>How do you read a wind vane built for a 1990s display?</h2>
+    <p>This was the part I wasn't sure about. It turns out the vane doesn't send its angle as a number — it sends two voltages. One rises and falls with the <em>sine</em> of the angle, the other with the <em>cosine</em>. A bit like how the length <em>and</em> the direction of a sundial's shadow together tell you the time: either one alone is ambiguous, but together they pin down exactly where the vane is pointing. So you measure both with a precise voltmeter and compare them, and the angle falls out.</p>
+    <p>Speed is the easy half. The cups click a switch as they spin — faster wind, faster clicks — so you just count the clicks over half a second. The board does both of these ten times a second, then wraps the result up in the standard wind message the rest of the boat already understands.</p>
 
     <div class="pipe">
       <div class="lane">
@@ -211,140 +158,96 @@
       </div>
       <div class="lane">
         <div class="lane-label"><span class="dot" style="background:var(--sky)"></span> Sent out &nbsp;·&nbsp; the same reading, two ways</div>
-        <div class="node out" style="background:linear-gradient(135deg,#0f8a7e,#19b5a6)"><div class="t">NMEA 2000 — PGN 130306</div><div class="s">apparent · 10 Hz · src 35 (primary)</div></div>
+        <div class="node out" style="background:linear-gradient(135deg,#0f8a7e,#19b5a6)"><div class="t">NMEA 2000 — PGN 130306</div><div class="s">apparent · 10 Hz · src 35</div></div>
         <span class="arrow">→</span>
-        <div class="node"><div class="t">WiFi</div><div class="s">phones &amp; dashboards</div></div>
+        <div class="node"><div class="t">WiFi</div><div class="s">SignalK · phones</div></div>
       </div>
     </div>
 
-    <div class="callout" style="margin-top:30px"><b>Why two voltages for one angle?</b> The vane doesn't report its angle as a single number. Instead it sends two voltages that rise and fall as it turns — a bit like how the length <em>and</em> direction of a sundial's shadow together tell you the time. Comparing the two pins down exactly which way the vane is pointing. A neat bonus: if the sensor ever falls silent, the board notices and reports <em>"no reading"</em> rather than a frozen, misleading angle.
-    </div>
+    <div class="callout">One small thing I'm glad I built in: if the sensor ever goes quiet, the board says <em>"no reading"</em> instead of freezing on the last angle it saw. A wind needle stuck at a confident, wrong number is worse than an honest blank.</div>
   </div>
 </section>
 
-<!-- HARDWARE -->
-<section id="hardware">
-  <div class="wrap">
-    <p class="kicker">The hardware</p>
-    <h2>Three signal wires, one buck, one bus tap</h2>
-    <div class="twocol" style="margin-top:10px">
-      <div>
-        <p class="lead" style="margin-bottom:18px">The <b>Hat Labs HALMET</b> is a small board made for exactly this kind of job. It shrugs off the rough, noisy voltages you find on a boat, reads the sensor with a precise voltmeter chip, and plugs straight into the NMEA 2000 network — drawing its own power from it, too. The only extra part is a small adjustable power supply that gives the mast sensor its 8&nbsp;volts — and that's the one thing you must set <em>before</em> wiring anything.</p>
-        <ul class="ticks">
-          <li>A small <b>HALMET</b> board — a tiny computer with the boat-network connection built in</li>
-          <li>Reads the wind angle with a <b>precise 16-bit voltmeter</b> chip</li>
-          <li>Counts the speed pulses in hardware — rock-steady, no false ticks</li>
-          <li>Powers the mast sensor from a small adjustable supply set to <b>8.0 V</b></li>
-          <li>Runs off the boat network itself — no separate power supply needed</li>
-        </ul>
-      </div>
-      <div>
-        <table>
-          <thead><tr><th>Wire</th><th>Signal</th><th>To</th></tr></thead>
-          <tbody>
-            <tr><td><span class="swatch" style="background:#cc2b2b"></span>Red</td><td>+8.0 V supply</td><td>Buck OUT+</td></tr>
-            <tr><td><span class="swatch" style="background:#9aa7b0"></span>Screen</td><td>0 V / ground</td><td>shared GND</td></tr>
-            <tr><td><span class="swatch" style="background:#2b6fd6"></span>Blue</td><td>sine</td><td>A1</td></tr>
-            <tr><td><span class="swatch" style="background:#2faa55"></span>Green</td><td>cosine</td><td>A2</td></tr>
-            <tr><td><span class="swatch" style="background:#f2b134"></span>Yellow</td><td>speed pulse</td><td>D1 · GPIO23</td></tr>
-          </tbody>
-        </table>
-        <div class="callout"><b>⚠ Set the power supply to 8.0 V first.</b> These cheap adjustable supplies arrive set to about 20&nbsp;V — more than enough to fry the mast sensor. Dial it down to 8.0&nbsp;V with a meter, nothing connected to the output, before the red wire ever goes near it.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- PARTS -->
-<section id="parts" class="alt">
-  <div class="wrap">
-    <p class="kicker">What you need</p>
-    <h2>The parts list</h2>
-    <p class="lead">Most of the build is reused — the wind vane, its cable, and the boat's NMEA 2000 network are already up there. You really only buy two things.</p>
-    <table style="margin-top:22px">
-      <thead><tr><th>Part</th><th>What it's for</th><th>Where</th></tr></thead>
+<!-- 3 — The build -->
+<section id="build">
+  <div class="wrap wide">
+    <h2>The build</h2>
+    <p>The brains is a <b>Hat Labs HALMET</b> — a small board that's happy with the rough voltages on a boat, reads the sensor with a precise 16-bit voltmeter chip, and plugs straight into the NMEA 2000 backbone, drawing its own power from it. Three wires from the existing mast cable go in: sine, cosine, and the speed pulse. That's the whole connection.</p>
+    <table>
+      <thead><tr><th>Wire</th><th>Signal</th><th>Goes to</th></tr></thead>
       <tbody>
-        <tr><td><b>Hat Labs HALMET</b></td><td>the bridge — reads the vane &amp; cups, speaks NMEA 2000, hosts the web UI</td><td><a href="https://shop.hatlabs.fi/products/halmet">shop.hatlabs.fi</a></td></tr>
-        <tr><td><b>Adjustable buck converter</b><br><span style="color:var(--muted);font-size:.84rem">with voltage display</span></td><td>steps the boat's 12&nbsp;V down to the vane's <b>8.0&nbsp;V</b> — set it <em>before</em> wiring</td><td><a href="https://www.amazon.de/dp/B0D8T9HDR7">amazon.de</a></td></tr>
-        <tr><td><b>Raymarine ST60+ wind vane</b><br><span style="color:var(--muted);font-size:.84rem">already on the boat</span></td><td>the existing sensor up the mast — the whole point is to reuse it, not replace it</td><td>—</td></tr>
-        <tr><td>Inline fuse &amp; wire</td><td>a ~1&nbsp;A fuse on the buck's 12&nbsp;V input, and three signal taps off the existing mast cable</td><td>—</td></tr>
+        <tr><td><span class="swatch" style="background:#cc2b2b"></span>Red</td><td>+8.0 V supply</td><td>buck OUT+</td></tr>
+        <tr><td><span class="swatch" style="background:#9aa7b0"></span>Screen</td><td>0 V / ground</td><td>shared ground</td></tr>
+        <tr><td><span class="swatch" style="background:#2b6fd6"></span>Blue</td><td>sine</td><td>A1</td></tr>
+        <tr><td><span class="swatch" style="background:#2faa55"></span>Green</td><td>cosine</td><td>A2</td></tr>
+        <tr><td><span class="swatch" style="background:#f2b134"></span>Yellow</td><td>speed pulse</td><td>D1 · GPIO23</td></tr>
       </tbody>
     </table>
-    <div class="callout" style="margin-top:22px"><b>…plus the firmware</b> — free and open-source, in this repo. Flash it once, then everything tunes from a browser.</div>
+    <p style="margin-top:1.2em">The sensor wants 8 volts, which the board doesn't hand out, so that comes from a small adjustable power supply. This is the one place it's easy to ruin everything:</p>
+    <div class="callout"><b>⚠ Set the power supply to 8.0 V before anything else.</b> These cheap adjustable supplies arrive set to around 20 V — more than enough to cook the sensor. Dial it down to 8.0 V with a meter, with nothing connected to the output, and only then let the red wire anywhere near it.</div>
   </div>
 </section>
 
-<!-- SOFTWARE -->
-<section class="alt">
-  <div class="wrap">
-    <p class="kicker">The software</p>
-    <h2>Tune it from a browser — no laptop, no re-flashing</h2>
-    <p class="lead">The firmware is built on <b>SensESP</b>, an open-source toolkit for boat sensors. Every adjustment — which way is "straight ahead", the direction of rotation, the speed scale — is a simple field on a web page the board hosts itself at <code>http://halmet-wind.local/</code>. You fine-tune it by sailing and typing numbers into a browser, never by plugging in a computer.</p>
+<!-- 4 — What it took -->
+<section id="parts" class="alt">
+  <div class="wrap wide">
+    <h2>What it took</h2>
+    <p>Almost nothing here is new. The vane, its cable, and the boat's network were all already up and running — that was the whole appeal. In the end I bought two things.</p>
+    <table>
+      <thead><tr><th>Part</th><th>What it's for</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td><b>Hat Labs HALMET</b></td><td>the bridge — reads the vane &amp; cups, speaks NMEA 2000, hosts the web page</td><td><a href="https://shop.hatlabs.fi/products/halmet">shop.hatlabs.fi</a></td></tr>
+        <tr><td><b>Adjustable buck converter</b><br><span style="color:var(--muted);font-size:.84rem">with a voltage display</span></td><td>steps the boat's 12 V down to the vane's <b>8.0 V</b> — set it <em>before</em> wiring</td><td><a href="https://www.amazon.de/dp/B0D8T9HDR7">amazon.de</a></td></tr>
+        <tr><td><b>Raymarine ST60+ wind vane</b><br><span style="color:var(--muted);font-size:.84rem">already on the boat</span></td><td>the existing sensor up the mast — reusing it was the entire point</td><td>—</td></tr>
+        <tr><td>Inline fuse &amp; wire</td><td>a ~1 A fuse on the buck's 12 V input, and three taps off the existing cable</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:1.2em" class="muted">…and the firmware, which is free and open-source — it's all in the repo.</p>
+  </div>
+</section>
 
-    <div class="grid g3" style="margin-top:24px">
-      <div class="card"><div class="ic">🧭</div><h3>Point it at the bow</h3><p>Tell it which way is forward, and flip the rotation with one setting if the wind ever reads backwards — no rewiring up the mast.</p></div>
-      <div class="card"><div class="ic">🌀</div><h3>Calibrate by sailing</h3><p>With the mast up, the angle is dialled in from readings logged while the vane swings freely; the speed is checked against your GPS in calm air.</p></div>
-      <div class="card"><div class="ic">📡</div><h3>One honest source</h3><p>It reports only the wind you actually feel on deck, and leaves "true wind" for the chartplotter to work out — so there's one clear source and no confusing duplicates.</p></div>
-    </div>
-
-    <div style="margin-top:30px">
-      <p class="lead" style="margin-bottom:14px">For the curious, the core is tiny — ten times a second it wraps up the latest reading and drops it onto the network:</p>
-      <pre><span class="c-cm">// Every 100 ms: package the latest calibrated wind reading and send it.</span>
-<span class="c-cm">// Angle is converted from SignalK's −π..+π to N2K's 0..2π; NaN → N2kDoubleNA.</span>
+<!-- 5 — Tuning by sailing -->
+<section id="tune">
+  <div class="wrap wide">
+    <h2>Tuning it by sailing</h2>
+    <p>Once it was wired, none of the fine-tuning needed a laptop. The board hosts its own little web page, so everything you'd want to adjust — which way is forward, which direction it rotates, the speed scale — is just a number you type into a browser. I set the zero by sighting down the boat, and flipped the rotation with a single setting when it first read backwards. The angle I dialled in by letting the vane spin freely and logging the readings; the speed I checked against GPS on a calm day.</p>
+    <p>It only ever reports <em>apparent</em> wind — the wind you actually feel on deck. I deliberately left "true wind" for the Orca to work out, so there's one honest source and nothing on the network fighting over the same number. The same readings also go out over WiFi to SignalK, so the tablet and any SignalK gauge can show them too.</p>
+    <p class="muted" style="margin-bottom:.6em">And the part that does the actual sending is about as boring as it should be:</p>
+    <pre><span class="c-cm">// Every 100 ms: package the latest calibrated wind reading and send it.</span>
 event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</span>, []() {
   tN2kMsg msg;
   <span class="c-key">double</span> awa = <span class="c-fn">isfinite</span>(last_awa_rad)
-      ? (last_awa_rad &lt; <span class="c-num">0</span> ? last_awa_rad + <span class="c-num">2</span>*M_PI : last_awa_rad)
+      ? (last_awa_rad &lt; <span class="c-num">0</span> ? last_awa_rad + <span class="c-num">2</span>*M_PI : last_awa_rad)  <span class="c-cm">// −π..π → 0..2π</span>
       : N2kDoubleNA;
   <span class="c-key">double</span> aws = <span class="c-fn">isfinite</span>(last_aws_mps) ? last_aws_mps : N2kDoubleNA;
   <span class="c-fn">SetN2kWindSpeed</span>(msg, sid, aws, awa, <span class="c-key">N2kWind_Apparent</span>);
   nmea2000-&gt;<span class="c-fn">SendMsg</span>(msg);   <span class="c-cm">// → onto the backbone</span>
 });</pre>
-    </div>
   </div>
 </section>
 
-<!-- OUTCOME -->
-<section id="result">
+<!-- 6 — Where it ended up -->
+<section id="result" class="alt">
   <div class="wrap">
-    <p class="kicker">The outcome</p>
-    <h2>Apparent wind, back on the boat — from a "dead" instrument</h2>
-    <div class="grid g2" style="margin-top:18px">
-      <div class="card">
-        <h3>What works</h3>
-        <ul class="ticks">
-          <li>Wind on the boat's network at a steady <b>10 readings a second</b></li>
-          <li>Direction &amp; speed showing on the <b>Orca Core 2</b> and any other display</li>
-          <li>The same readings also land in <b>SignalK</b> over WiFi — ready for any SignalK app or plugin (gauges like KIP, dashboards, loggers) you install</li>
-          <li>Every adjustment tweakable live in a browser — no laptop aboard</li>
-          <li>Tested on the bench, then proven out on the water</li>
-        </ul>
-      </div>
-      <div class="card" style="background:linear-gradient(160deg,#0b1f33,#10263d);color:#dceaf3;border:none">
-        <h3 style="color:#fff">Bill of the idea</h3>
-        <p style="color:#bcd2e0">No mast climb. No replacement sensor. No pricey proprietary display. Just a ~€60 board, a small power supply, three wires off the existing cable, and open-source firmware — giving a decade-old wind sensor a full second life on a modern boat network.</p>
-        <div class="chips" style="margin-top:14px">
-          <span class="chip">ESP32 / HALMET</span><span class="chip">SensESP v3</span>
-          <span class="chip">NMEA 2000</span><span class="chip">ADS1115</span>
-          <span class="chip">PlatformIO</span><span class="chip">Raymarine ST60+</span>
-        </div>
-      </div>
-    </div>
+    <h2>Where it ended up</h2>
+    <p>It works. Direction and speed are back on the Orca, the same numbers land in SignalK over WiFi for the tablet, and the whole thing updates ten times a second — from a sensor everyone had already written off. I tested it on the bench first, then watched it come alive properly the first time a gust hit the masthead on the water.</p>
+    <p>The display that died is in a drawer somewhere. The sensor it left deaf is doing exactly what it always did. It just needed someone new to listen.</p>
+    <p class="muted" style="font-size:.98rem">Under the hood it's an ESP32 running the SensESP framework, the NMEA2000 library doing the network side, and an ADS1115 doing the careful measuring — all open source. If you want the wiring, the calibration notes, or the whole firmware, it's on <a href="https://github.com/den200/halmet-wind-vane">GitHub</a>.</p>
   </div>
 </section>
 
 <footer>
-  <div class="wrap">
+  <div class="wrap wide">
     <div>
       <h4>HALMET Wind</h4>
-      <p style="margin:.2em 0;max-width:42ch">Open-source firmware giving a Raymarine ST60+ mast wind sensor a second life on NMEA 2000. V1.</p>
-      <p class="fine">Apache 2.0 licensed — like the Hat Labs firmware it builds on. Hardware by Hat Labs. Built with Claude Code. Not affiliated with Raymarine or Orca.</p>
+      <p style="max-width:42ch">Open-source firmware that gives a Raymarine ST60+ wind vane a second life on NMEA 2000.</p>
+      <p class="fine">Apache 2.0 licensed, like the Hat Labs firmware it builds on. Hardware by Hat Labs. Built with Claude Code. Not affiliated with Raymarine or Orca.</p>
     </div>
     <div>
       <h4>Links</h4>
-      <p style="margin:.2em 0"><a href="https://github.com/den200/halmet-wind-vane">Source &amp; firmware →</a></p>
-      <p style="margin:.2em 0"><a href="https://github.com/den200/halmet-wind-vane/blob/main/docs/WIRING.md">Wiring &amp; power guide →</a></p>
-      <p style="margin:.2em 0"><a href="https://hatlabs.fi/">Hat Labs HALMET →</a></p>
+      <p><a href="https://github.com/den200/halmet-wind-vane">Source &amp; firmware →</a></p>
+      <p><a href="https://github.com/den200/halmet-wind-vane/blob/main/docs/WIRING.md">Wiring &amp; power guide →</a></p>
+      <p><a href="https://hatlabs.fi/">Hat Labs HALMET →</a></p>
     </div>
   </div>
 </footer>
