@@ -255,6 +255,25 @@
   </div>
 </section>
 
+<!-- PARTS -->
+<section id="parts" class="alt">
+  <div class="wrap">
+    <p class="kicker">What you need</p>
+    <h2>The parts list</h2>
+    <p class="lead">Most of the build is reused — the wind vane, its cable, and the boat's NMEA 2000 network are already up there. You really only buy two things.</p>
+    <table style="margin-top:22px">
+      <thead><tr><th>Part</th><th>What it's for</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td><b>Hat Labs HALMET</b></td><td>the bridge — reads the vane &amp; cups, speaks NMEA 2000, hosts the web UI</td><td><a href="https://shop.hatlabs.fi/products/halmet">shop.hatlabs.fi</a></td></tr>
+        <tr><td><b>Adjustable buck converter</b><br><span style="color:var(--muted);font-size:.84rem">with voltage display</span></td><td>steps the boat's 12&nbsp;V down to the vane's <b>8.0&nbsp;V</b> — set it <em>before</em> wiring</td><td><a href="https://www.amazon.de/dp/B0D8T9HDR7">amazon.de</a></td></tr>
+        <tr><td><b>Raymarine ST60+ wind vane</b><br><span style="color:var(--muted);font-size:.84rem">already on the boat</span></td><td>the existing sensor up the mast — the whole point is to reuse it, not replace it</td><td>—</td></tr>
+        <tr><td>Inline fuse &amp; wire</td><td>a ~1&nbsp;A fuse on the buck's 12&nbsp;V input, and three signal taps off the existing mast cable</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <div class="callout" style="margin-top:22px"><b>…plus the firmware</b> — free and open-source, in this repo. Flash it once, then everything tunes from a browser.</div>
+  </div>
+</section>
+
 <!-- SOFTWARE -->
 <section class="alt">
   <div class="wrap">
@@ -296,7 +315,7 @@ event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</spa
         <ul class="ticks">
           <li>Wind on the boat's network at a steady <b>10 readings a second</b></li>
           <li>Direction &amp; speed showing on the <b>Orca Core 2</b> and any other display</li>
-          <li>The same readings over <b>WiFi</b> for phone apps and dashboards</li>
+          <li>The same readings also land in <b>SignalK</b> over WiFi — ready for any SignalK app or plugin (gauges like KIP, dashboards, loggers) you install</li>
           <li>Every adjustment tweakable live in a browser — no laptop aboard</li>
           <li>Tested on the bench, then proven out on the water</li>
         </ul>

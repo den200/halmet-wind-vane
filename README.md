@@ -20,7 +20,8 @@ whose display head died but whose sensor is still healthy — and republishes
   `WindReference = Apparent`. This is the deliverable — the boat (Orca Core 2 + N2K
   displays) consume wind over the wired backbone.
 - **V2 (secondary):** publishes the same calibrated values to SignalK over WiFi
-  (`environment.wind.angleApparent` / `speedApparent`) for dashboards and logging.
+  (`environment.wind.angleApparent` / `speedApparent`), so any SignalK plugin or
+  web app (KIP, Freeboard, instrument panels, loggers) can display them once installed.
 
 ## How it works
 
@@ -46,6 +47,20 @@ calibration only needs to **centre** each channel — see [`src/sin_cos_angle_tr
 
 ⚠️ The cheap buck modules ship at ~20 V — set it to **8.0 V on the bench** before
 connecting the sensor, or you'll cook it. Full details in [docs/WIRING.md](docs/WIRING.md).
+
+## Components
+
+Most of the build is reused — the wind vane, its cable, and the boat's NMEA 2000
+network are already there. You really only buy two things:
+
+| Part | For | Link |
+|---|---|---|
+| **Hat Labs HALMET** | the bridge board — reads the vane/cups, speaks N2K, hosts the web UI | [shop.hatlabs.fi](https://shop.hatlabs.fi/products/halmet) |
+| **Adjustable buck converter** (with voltage display) | steps boat 12 V down to the vane's **8.0 V** — set it before wiring | [amazon.de](https://www.amazon.de/dp/B0D8T9HDR7) |
+| **Raymarine ST60+ wind vane** | the existing masthead sensor — reused, not bought | — |
+| Inline ~1 A fuse + wire | fuse the buck's 12 V input; three signal taps off the existing mast cable | — |
+
+Plus the open-source firmware in this repo.
 
 ## Live calibration (web UI, no reflash)
 
