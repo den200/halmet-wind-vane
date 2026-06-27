@@ -1,13 +1,14 @@
-# HALMET Wind — Raymarine ST60+ masthead → NMEA 2000
+# HALMET Wind — Raymarine ST60+ wind vane → NMEA 2000
 
 Firmware for the [Hat Labs **HALMET**](https://hatlabs.fi/) board that reads a legacy
-**Raymarine ST60+ masthead wind transducer** — whose display head died but whose
-masthead is still healthy — and republishes **apparent wind** onto the boat's
+**Raymarine ST60+ wind transducer** — the vane and cups at the top of the mast,
+whose display head died but whose sensor is still healthy — and republishes
+**apparent wind** onto the boat's
 **NMEA 2000** backbone.
 
-> **The story:** the ST60+ *display head* failed; the masthead 15 m up was fine.
-> Rather than climb the mast or replace the instrument, HALMET taps the masthead's
-> raw sin/cos and cup-pulse wires directly and puts wind back on the modern bus.
+> **The story:** the ST60+ *display head* failed; the wind vane 15 m up the mast
+> was fine. Rather than climb the mast or replace the instrument, HALMET taps the
+> old sensor's raw sin/cos and cup-pulse wires directly and puts wind back on the bus.
 
 📖 **Project page:** https://den200.github.io/halmet-wind-vane/ · 🔌 **[Wiring & power guide](docs/WIRING.md)**
 
@@ -29,7 +30,7 @@ masthead is still healthy — and republishes **apparent wind** onto the boat's
 | **Speed** | D1 pulse → DigitalInputCounter (RISING, 500 ms) → Frequency → × K (m/s per Hz) → AWS |
 | **Output** | latched values → NMEA 2000 PGN 130306 @ 10 Hz **and** SignalK `environment.wind.*` |
 
-The masthead encodes vane angle as two ratiometric voltages (sine and cosine);
+The vane encodes its angle as two ratiometric voltages (sine and cosine);
 recovering the angle is `atan2(sin, cos)`. Since `atan2` is scale-invariant,
 calibration only needs to **centre** each channel — see [`src/sin_cos_angle_transform.h`](src/sin_cos_angle_transform.h).
 
@@ -44,7 +45,7 @@ calibration only needs to **centre** each channel — see [`src/sin_cos_angle_tr
 | Yellow | speed pulse | **D1 / GPIO23** | passive, RISING |
 
 ⚠️ The cheap buck modules ship at ~20 V — set it to **8.0 V on the bench** before
-connecting the masthead, or you'll cook it. Full details in [docs/WIRING.md](docs/WIRING.md).
+connecting the sensor, or you'll cook it. Full details in [docs/WIRING.md](docs/WIRING.md).
 
 ## Live calibration (web UI, no reflash)
 

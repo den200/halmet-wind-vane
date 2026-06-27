@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>HALMET Wind — reviving a Raymarine ST60+ masthead onto NMEA 2000</title>
-<meta name="description" content="The ST60+ wind display died but the masthead lived. A Hat Labs HALMET board reads the legacy sin/cos resolver and cup-pulse signals directly and republishes apparent wind as NMEA 2000 PGN 130306 — no mast climb, no new sensor." />
+<title>HALMET Wind — reviving a Raymarine ST60+ wind vane onto NMEA 2000</title>
+<meta name="description" content="The ST60+ wind display died but the wind vane at the top of the mast lived. A Hat Labs HALMET board reads the old vane and cups directly and republishes apparent wind as NMEA 2000 PGN 130306 — no mast climb, no new sensor." />
 <style>
   :root{
     --navy:#0b1f33; --navy2:#10263d; --ink:#0a1722;
@@ -138,7 +138,7 @@
   </svg>
   <div class="wrap">
     <span class="eyebrow">⛵ Open marine firmware · NMEA 2000</span>
-    <h1>The wind display died.<br><span class="accent">The masthead didn't.</span></h1>
+    <h1>The wind display died.<br><span class="accent">The vane up the mast didn't.</span></h1>
     <p class="lede">High on the mast, the wind sensor was still spinning happily — but the screen that used to read it had died. Instead of climbing the mast or buying a whole new system, a small <b>HALMET</b> board listens to the old sensor directly and speaks its readings to the boat's modern network (<b>NMEA 2000</b>).</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/den200/halmet-wind-vane">★ View on GitHub</a>
@@ -167,7 +167,7 @@
       </div>
       <div class="panel alive">
         <span class="tag good">✓ Alive</span>
-        <h3 style="margin:.1em 0 .3em">The masthead transducer</h3>
+        <h3 style="margin:.1em 0 .3em">The wind vane &amp; cups</h3>
         <p style="color:#3f6258">A vane that swings to point into the wind (that's the <em>direction</em>) and little cups that spin faster as it blows harder (that's the <em>speed</em>). Old, sturdy, still accurate — and speaking a simple electrical language, if you know how to listen.</p>
       </div>
     </div>
