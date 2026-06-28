@@ -3,217 +3,183 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>HALMET Wind — reviving a Raymarine ST60+ wind vane onto NMEA 2000</title>
-<meta name="description" content="The wind display on my boat died, but the sensor at the top of the mast was perfectly fine. Here's how I got it talking to the modern NMEA 2000 network instead of climbing the mast for a new one." />
+<title>Replacing a broken Raymarine ST60+ wind display (masthead sensor still works)</title>
+<meta name="description" content="The ST60+ display failed but the masthead sensor still works. How to confirm the sensor with a multimeter, then read it directly into NMEA 2000 with a Hat Labs HALMET board. Wiring, parts, and firmware." />
 <style>
   :root{
-    --navy:#0b1f33; --navy2:#10263d; --ink:#0a1722;
-    --teal:#19b5a6; --teal-d:#0f8a7e; --sky:#52c7e8; --amber:#f2b134;
-    --paper:#f5f8fb; --card:#ffffff; --line:#dce5ee; --muted:#5a6b7b;
-    --shadow:0 10px 30px rgba(11,31,51,.10);
+    --ink:#1a2329; --muted:#5b6b78; --line:#e3e8ee; --bg:#ffffff; --soft:#f5f7f9;
+    --accent:#0f6f78; --navy:#0b1f33; --amber:#9a6b00;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--paper);line-height:1.7;-webkit-font-smoothing:antialiased}
-  a{color:var(--teal-d);text-decoration:none}
-  a:hover{text-decoration:underline}
+  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.62;font-size:17px}
   .wrap{max-width:760px;margin:0 auto;padding:0 22px}
-  .wrap.wide{max-width:1000px}
-  h1,h2,h3{line-height:1.18;letter-spacing:-.01em}
-  code,kbd{font-family:var(--mono);font-size:.92em}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
 
-  /* ---- Hero ---- */
-  header.hero{
-    background:radial-gradient(1200px 500px at 80% -10%,rgba(25,181,166,.30),transparent 60%),
-               radial-gradient(900px 500px at 0% 0%,rgba(82,199,232,.18),transparent 55%),
-               linear-gradient(160deg,var(--navy),var(--navy2));
-    color:#eaf2f8;padding:78px 0 84px;position:relative;overflow:hidden;border-bottom:1px solid #0a1828;
-  }
-  .hero .wrap{position:relative;z-index:2}
-  .eyebrow{display:inline-flex;gap:9px;align-items:center;font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;
-    color:#bfe7e0;opacity:.9}
-  .hero h1{font-size:clamp(2.1rem,5.2vw,3.3rem);margin:.5em 0 .35em;color:#fff;font-weight:800}
-  .hero h1 .accent{background:linear-gradient(90deg,var(--teal),var(--sky));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p.lede{font-size:clamp(1.08rem,2.1vw,1.3rem);max-width:54ch;color:#cdddea;margin:.2em 0 1.6em;line-height:1.6}
-  .hero a.repo{display:inline-flex;align-items:center;gap:9px;padding:11px 18px;border-radius:11px;font-weight:600;font-size:.96rem;
-    background:rgba(255,255,255,.06);color:#eaf2f8;border:1px solid rgba(255,255,255,.22)}
-  .hero a.repo:hover{text-decoration:none;background:rgba(255,255,255,.11)}
-  .hero-vane{position:absolute;right:-30px;top:50%;transform:translateY(-50%);width:340px;height:340px;opacity:.85;z-index:1}
-  @media(max-width:880px){.hero-vane{display:none}}
+  header.top{border-bottom:1px solid var(--line);background:var(--soft);padding:40px 0 30px}
+  .meta{font-family:var(--mono);font-size:.8rem;color:var(--muted);margin:0 0 14px}
+  header.top h1{font-size:1.85rem;line-height:1.25;margin:0 0 .55em;font-weight:730;letter-spacing:-.01em}
+  header.top p{margin:.55em 0;color:#2c3a45;max-width:64ch}
+  .toplinks{margin-top:16px;font-size:.92rem}
+  .toplinks a{margin-right:18px}
 
-  /* ---- Sections ---- */
-  section{padding:56px 0}
-  section.alt{background:linear-gradient(180deg,#fff,#f0f5fa)}
-  section h2{font-size:clamp(1.5rem,3.2vw,2rem);margin:0 0 .7em}
-  section p{font-size:1.09rem;color:#2c3a47;margin:0 0 1.1em}
-  section p .muted{color:var(--muted)}
+  main{padding:6px 0 10px}
+  section{padding:6px 0}
+  h2{font-size:1.32rem;font-weight:700;margin:1.7em 0 .55em;padding-bottom:.25em;border-bottom:1px solid var(--line);letter-spacing:-.01em}
+  h3{font-size:1.04rem;margin:1.3em 0 .3em}
+  p{margin:0 0 1em;max-width:66ch}
+  ol,ul{max-width:66ch;padding-left:1.35em;margin:0 0 1em}
+  li{margin:.4em 0}
+  em{color:#3a4a55}
+  code{font-family:var(--mono);font-size:.88em;background:var(--soft);border:1px solid var(--line);padding:.06em .34em;border-radius:4px}
+  pre{background:#0d1b26;color:#d7e3ee;border-radius:8px;padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:.82rem;line-height:1.55;margin:1.1em 0}
+  pre code{background:none;border:none;padding:0;font-size:1em}
+  .c-key{color:#6cd0c2}.c-fn{color:#7fc7ee}.c-num{color:#e6b14e}.c-cm{color:#6b8196;font-style:italic}
 
-  /* ---- Pipeline diagram ---- */
-  .pipe{display:flex;flex-direction:column;gap:26px;margin:30px 0 6px}
-  .lane{display:flex;align-items:stretch;gap:12px;flex-wrap:wrap}
-  .lane-label{flex:0 0 100%;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:9px;font-size:.96rem}
-  .lane-label .dot{width:10px;height:10px;border-radius:50%}
-  .node{flex:1 1 150px;min-width:130px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 4px 12px rgba(11,31,51,.05);position:relative}
-  .node .t{font-weight:680;font-size:.95rem}
-  .node .s{font-size:.78rem;color:var(--muted);font-family:var(--mono)}
-  .node.out{background:linear-gradient(135deg,var(--navy),var(--navy2));border:none;color:#eaf2f8}
+  table{width:100%;border-collapse:collapse;font-size:.95rem;margin:1.1em 0}
+  caption{caption-side:top;text-align:left;color:var(--muted);font-size:.85rem;margin-bottom:.4em}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--soft);font-weight:650;font-size:.84rem;color:#2c3a45}
+  .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px;vertical-align:-1px;border:1px solid rgba(0,0,0,.2)}
+
+  .note{border-left:3px solid var(--amber);background:#fdf8ee;padding:12px 16px;margin:1.2em 0;border-radius:0 6px 6px 0;font-size:.97rem}
+  .note b{color:#6e4d00}
+
+  /* signal path block diagram */
+  .pipe{display:flex;flex-direction:column;gap:18px;margin:1.2em 0}
+  .lane{display:flex;align-items:stretch;gap:9px;flex-wrap:wrap}
+  .lane-label{flex:0 0 100%;font-weight:650;color:var(--navy);font-size:.9rem;margin-bottom:2px}
+  .node{flex:1 1 120px;min-width:112px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  .node .t{font-weight:650;font-size:.9rem}
+  .node .s{font-size:.74rem;color:var(--muted);font-family:var(--mono);margin-top:1px}
+  .node.out{background:#0d1b26;border-color:#0d1b26;color:#e7eef4}
   .node.out .s{color:#9fc0d2}
-  .arrow{align-self:center;color:var(--teal-d);font-size:1.3rem;font-weight:700;flex:0 0 auto}
-  @media(max-width:760px){.arrow{transform:rotate(90deg)}.node{flex:1 1 100%}}
+  .arrow{align-self:center;color:#9aa7b0;font-size:1.1rem;flex:0 0 auto}
+  @media(max-width:680px){.arrow{transform:rotate(90deg)}.node{flex:1 1 100%}}
 
-  /* ---- Tables ---- */
-  table{width:100%;border-collapse:collapse;font-size:.95rem;background:#fff;border-radius:14px;overflow:hidden;box-shadow:var(--shadow);margin:6px 0 4px}
-  th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}
-  th{background:var(--navy);color:#dceaf3;font-weight:600;font-size:.82rem;letter-spacing:.04em;text-transform:uppercase}
-  tr:last-child td{border-bottom:none}
-  .swatch{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:8px;vertical-align:-1px;border:1px solid rgba(0,0,0,.15)}
-
-  /* ---- Code ---- */
-  pre{background:var(--ink);color:#d7e3ee;border-radius:14px;padding:20px 22px;overflow-x:auto;font-family:var(--mono);font-size:.85rem;line-height:1.6;box-shadow:var(--shadow)}
-  .c-key{color:#6cd0c2}.c-fn{color:#7fc7ee}.c-num{color:#f2b134}.c-cm{color:#6b8196;font-style:italic}.c-str{color:#e6a77a}
-
-  .callout{border-left:4px solid var(--amber);background:#fffaf0;border-radius:0 12px 12px 0;padding:15px 20px;margin:22px 0;color:#5a4a1f;font-size:1.02rem;line-height:1.6}
-  .callout b{color:#3f3414}
-
-  .pull{font-size:1.28rem;line-height:1.45;color:var(--navy);font-weight:600;margin:34px 0;padding-left:20px;border-left:3px solid var(--teal)}
-
-  footer{background:var(--navy);color:#b7cddc;padding:46px 0 38px;border-top:1px solid #0a1828}
-  footer .wrap{display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:flex-start}
-  footer h4{color:#fff;margin:0 0 10px;font-size:1rem}
-  footer p{font-size:.92rem;margin:.2em 0}
-  footer a{color:#7fd6cb}
-  .fine{color:#6f8a9e;font-size:.82rem;margin-top:22px}
+  footer{border-top:1px solid var(--line);margin-top:34px;padding:22px 0 40px;color:var(--muted);font-size:.9rem}
+  footer a{margin-right:16px}
 </style>
 </head>
 <body>
 
-<header class="hero">
-  <svg class="hero-vane" viewBox="0 0 200 200" fill="none" aria-hidden="true">
-    <circle cx="100" cy="100" r="86" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
-    <circle cx="100" cy="100" r="62" stroke="rgba(255,255,255,.10)" stroke-width="1.5" stroke-dasharray="4 7"/>
-    <g stroke="rgba(207,228,236,.5)" stroke-width="2">
-      <line x1="100" y1="22" x2="100" y2="36"/><line x1="100" y1="164" x2="100" y2="178"/>
-      <line x1="22" y1="100" x2="36" y2="100"/><line x1="164" y1="100" x2="178" y2="100"/>
-    </g>
-    <text x="100" y="18" fill="#cfe4ec" font-size="13" text-anchor="middle" font-family="system-ui">N</text>
-    <g transform="rotate(38 100 100)">
-      <polygon points="100,38 112,100 100,90 88,100" fill="#19b5a6"/>
-      <polygon points="100,162 112,100 100,110 88,100" fill="#52c7e8" opacity=".85"/>
-    </g>
-    <circle cx="100" cy="100" r="7" fill="#fff"/>
-  </svg>
+<header class="top">
   <div class="wrap">
-    <span class="eyebrow">⛵ A boat project</span>
-    <h1>The wind display died.<br><span class="accent">The vane up the mast didn't.</span></h1>
-    <p class="lede">One day the old ST60+ wind display at the helm just went dark. I assumed the whole instrument was gone — but it turned out only the screen had died. The sensor at the top of the mast was still up there, still spinning, with nothing left to listen to it. This is how I got it talking again.</p>
-    <a class="repo" href="https://github.com/den200/halmet-wind-vane">The whole thing is on GitHub →</a>
+    <p class="meta">Raymarine ST60+ → NMEA 2000 · open-source firmware · Apache-2.0</p>
+    <h1>Replacing a broken ST60+ wind display when the masthead sensor still works</h1>
+    <p>My Raymarine ST60+ wind display stopped working. After some checking, only the display electronics had failed — the masthead sensor was still producing valid data. Rather than replace the whole system, I built a small interface board that reads the original sensor directly and outputs NMEA 2000.</p>
+    <p>This is the writeup: how the sensor works, how to confirm yours is still good with a multimeter, the wiring, the parts, and the firmware. It assumes you're comfortable with a multimeter and basic DC wiring.</p>
+    <p class="toplinks"><a href="https://github.com/den200/halmet-wind-vane">Source &amp; firmware</a><a href="https://github.com/den200/halmet-wind-vane/blob/main/docs/WIRING.md">Wiring guide</a></p>
   </div>
 </header>
 
-<!-- 1 — Only the screen died -->
-<section id="story">
-  <div class="wrap">
-    <h2>Only the screen died</h2>
-    <p>A Raymarine ST60+ is really two boxes sharing one cable: a sensor up the mast, and a display at the helm that knows how to read it. The display is the part that gave up. The sensor — a little vane for wind direction, three cups for wind speed — was completely fine. Fifteen metres up, perfectly happy, and suddenly completely deaf, because the only thing that ever understood it was the dead screen.</p>
-    <p>Meanwhile the rest of the boat had moved on. The Orca and everything else talk to each other over NMEA 2000, a network the 90s-era ST60+ never spoke a word of. So nothing was actually broken except a screen. The job wasn't to repair anything — it was to <em>translate</em>: read the old sensor's signals directly, and put the wind back onto the network everything else already uses.</p>
-    <p class="pull">It just needed something new to listen to it.</p>
-  </div>
+<main>
+<div class="wrap">
+
+<section id="sensor">
+  <h2>The masthead sensor</h2>
+  <p>The ST60+ masthead unit is two sensors on a five-wire cable. It needs an 8&nbsp;V supply, normally provided by the display. The display is gone, so that supply now comes from a small buck converter instead.</p>
+  <p>Angle is a sin/cos sensor. Two wires carry voltages: one follows the sine of the vane angle, the other the cosine. Both are ratiometric to the 8&nbsp;V supply and swing roughly 2.5–5.5&nbsp;V across a full rotation. The angle is <code>atan2(sin, cos)</code>. Two channels instead of a single potentiometer means no dead spot at the wrap-around, and the reading is self-referencing — only each channel's centre voltage needs calibrating, not its gain.</p>
+  <p>Speed is a cup anemometer. The cups drive a square wave on the yellow wire, about 3.2&nbsp;V / 8&nbsp;V levels, at a frequency proportional to rotation. Count the edges, scale by a constant, done.</p>
+  <table>
+    <caption>ST60+ masthead wires (same colours on ST60 / ST60+ / i60)</caption>
+    <thead><tr><th>Wire</th><th>Signal</th></tr></thead>
+    <tbody>
+      <tr><td><span class="swatch" style="background:#cc2b2b"></span>Red</td><td>+8.0&nbsp;V supply</td></tr>
+      <tr><td><span class="swatch" style="background:#9aa7b0"></span>Screen / bare</td><td>0&nbsp;V / ground</td></tr>
+      <tr><td><span class="swatch" style="background:#2b6fd6"></span>Blue</td><td>sine (angle)</td></tr>
+      <tr><td><span class="swatch" style="background:#2faa55"></span>Green</td><td>cosine (angle)</td></tr>
+      <tr><td><span class="swatch" style="background:#f2b134"></span>Yellow</td><td>speed pulse</td></tr>
+    </tbody>
+  </table>
 </section>
 
-<!-- 2 — Reading an old vane -->
-<section id="how" class="alt">
-  <div class="wrap wide">
-    <h2>How do you read a wind vane built for a 1990s display?</h2>
-    <p>This was the part I wasn't sure about. It turns out the vane doesn't send its angle as a number — it sends two voltages. One rises and falls with the <em>sine</em> of the angle, the other with the <em>cosine</em>. A bit like how the length <em>and</em> the direction of a sundial's shadow together tell you the time: either one alone is ambiguous, but together they pin down exactly where the vane is pointing. So you measure both with a precise voltmeter and compare them, and the angle falls out.</p>
-    <p>Speed is the easy half. The cups click a switch as they spin — faster wind, faster clicks — so you just count the clicks over half a second. The board does both of these ten times a second, then wraps the result up in the standard wind message the rest of the boat already understands.</p>
+<section id="multimeter">
+  <h2>Checking the sensor with a multimeter</h2>
+  <p>A dead display doesn't mean a dead sensor, but it's worth ten minutes to confirm before buying or building anything. You need a variable bench supply or the buck converter set to 8.0&nbsp;V, and a multimeter. A frequency (Hz) range helps for the speed test but isn't essential.</p>
+  <ol>
+    <li>Disconnect the masthead cable from the old display.</li>
+    <li>Set the supply to <b>8.0&nbsp;V</b> and verify it with the meter <em>before</em> connecting anything. These sensors run on 8&nbsp;V; 12&nbsp;V or a buck still set to its factory ~20&nbsp;V will damage it. Then connect <b>Red</b> to +8&nbsp;V and <b>Screen</b> to ground.</li>
+    <li><b>Angle.</b> Meter on DC volts. Measure Blue→Screen and Green→Screen while turning the vane slowly by hand through a full turn. Both should move smoothly between roughly 2.5&nbsp;V and 5.5&nbsp;V, about a quarter-turn out of phase with each other. Smooth, full-range movement on both channels means the angle sensor is good. A channel that sits flat, jumps, or pins at a rail is the failed one.</li>
+    <li><b>Speed.</b> Meter on frequency (Hz). Measure Yellow→Screen and spin the cups. You should read a few Hz spinning by hand, rising as you spin faster. No Hz range? On DC volts the reading will flick between about 3&nbsp;V and 8&nbsp;V as the cups turn; a value that doesn't change when you spin them means the speed channel is dead.</li>
+  </ol>
+  <p>If both pass, the sensor is fine and the rest is just interfacing it to NMEA 2000.</p>
+</section>
 
-    <div class="pipe">
-      <div class="lane">
-        <div class="lane-label"><span class="dot" style="background:var(--teal)"></span> Wind angle &nbsp;·&nbsp; from the vane</div>
-        <div class="node"><div class="t">A1 / A2</div><div class="s">sin · cos</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">Measure</div><div class="s">precise voltmeter</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">Centre</div><div class="s">(V − Vmid)/A</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">Work out angle</div><div class="s">compare the two</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">Smooth</div><div class="s">average of 5</div></div>
-        <span class="arrow">→</span>
-        <div class="node out"><div class="t">Wind angle</div><div class="s">done</div></div>
-      </div>
-      <div class="lane">
-        <div class="lane-label"><span class="dot" style="background:var(--amber)"></span> Wind speed &nbsp;·&nbsp; from the spinning cups</div>
-        <div class="node"><div class="t">D1 (GPIO23)</div><div class="s">pulse · RISING</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">Count ticks</div><div class="s">every ½ second</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">Ticks/sec</div><div class="s">how fast</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">× K</div><div class="s">0.5144 m/s·Hz⁻¹</div></div>
-        <span class="arrow">→</span>
-        <div class="node out"><div class="t">Wind speed</div><div class="s">done</div></div>
-      </div>
-      <div class="lane">
-        <div class="lane-label"><span class="dot" style="background:var(--sky)"></span> Sent out &nbsp;·&nbsp; the same reading, two ways</div>
-        <div class="node out" style="background:linear-gradient(135deg,#0f8a7e,#19b5a6)"><div class="t">NMEA 2000 — PGN 130306</div><div class="s">apparent · 10 Hz · src 35</div></div>
-        <span class="arrow">→</span>
-        <div class="node"><div class="t">WiFi</div><div class="s">SignalK · phones</div></div>
-      </div>
+<section id="wiring">
+  <h2>The interface board and wiring</h2>
+  <p>The board is a <a href="https://shop.hatlabs.fi/products/halmet">Hat Labs HALMET</a>. It's an ESP32 board with NMEA 2000 on the chip's built-in CAN controller, a 16-bit ADS1115 on the analog inputs, ±32&nbsp;V-tolerant Schmitt-triggered digital inputs, and it's powered from the bus. That maps onto the sensor directly: sin and cos to two analog inputs, the speed pulse to a digital input, power from the backbone.</p>
+  <p>Three signal wires from the masthead, plus the 8&nbsp;V supply from the buck:</p>
+  <table>
+    <thead><tr><th>Wire</th><th>Signal</th><th>Connects to</th></tr></thead>
+    <tbody>
+      <tr><td><span class="swatch" style="background:#cc2b2b"></span>Red</td><td>+8.0&nbsp;V</td><td>buck OUT+</td></tr>
+      <tr><td><span class="swatch" style="background:#9aa7b0"></span>Screen</td><td>0&nbsp;V</td><td>shared ground (buck OUT−, board input ground)</td></tr>
+      <tr><td><span class="swatch" style="background:#2b6fd6"></span>Blue</td><td>sine</td><td>A1 (analog)</td></tr>
+      <tr><td><span class="swatch" style="background:#2faa55"></span>Green</td><td>cosine</td><td>A2 (analog)</td></tr>
+      <tr><td><span class="swatch" style="background:#f2b134"></span>Yellow</td><td>speed pulse</td><td>D1 / GPIO23 (digital, rising edge)</td></tr>
+    </tbody>
+  </table>
+  <p>The sin/cos terminals (~2.5–5.5&nbsp;V) go through the board's fixed 10:1 divider and sit well inside the ADS1115's range. The constant-current sources on A1/A2 stay off — this is passive voltage sensing, not a resistive sender. Leave the on-board 120&nbsp;Ω CAN terminator open; the backbone is already terminated at both ends. Grounding matters: the sensor's screen, the buck's negative, and the board's input-side ground must be the same node, or the angle reads garbage.</p>
+  <div class="note"><b>Set the buck to 8.0&nbsp;V before wiring.</b> The cheap adjustable buck modules ship at about 20&nbsp;V. Set the output to 8.0&nbsp;V with a meter, nothing connected to the output, and only then connect Red. The pot sets the output; the push-button only trims the module's own LED meter.</div>
+</section>
+
+<section id="parts">
+  <h2>Parts</h2>
+  <p>The vane, its cable, and the boat's NMEA 2000 network were already in place. Two things to buy:</p>
+  <table>
+    <thead><tr><th>Part</th><th>Purpose</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Hat Labs HALMET</td><td>interface board — reads sin/cos + pulse, outputs NMEA 2000, hosts the config web page</td><td><a href="https://shop.hatlabs.fi/products/halmet">shop.hatlabs.fi</a></td></tr>
+      <tr><td>Adjustable buck converter, with voltage display</td><td>12&nbsp;V → 8.0&nbsp;V for the sensor</td><td><a href="https://www.amazon.de/dp/B0D8T9HDR7">amazon.de</a></td></tr>
+      <tr><td>Raymarine ST60+ masthead sensor</td><td>existing — reused</td><td>—</td></tr>
+      <tr><td>~1&nbsp;A inline fuse, wire</td><td>fuse on the buck's 12&nbsp;V input; three taps off the existing cable</td><td>—</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="firmware">
+  <h2>Firmware</h2>
+  <p>Firmware is <a href="https://github.com/SignalK/SensESP">SensESP</a> (ESP32 / PlatformIO) with the <a href="https://github.com/ttlappalainen/NMEA2000">NMEA2000</a> library. The signal path is two short pipelines that get latched and sent:</p>
+
+  <div class="pipe">
+    <div class="lane">
+      <div class="lane-label">Angle</div>
+      <div class="node"><div class="t">A1 / A2</div><div class="s">sin · cos</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">ADS1115</div><div class="s">16-bit read</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">centre</div><div class="s">(V − Vmid)/A</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">atan2</div><div class="s">+ offset, sign</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">smooth</div><div class="s">avg 5</div></div>
     </div>
-
-    <div class="callout">One small thing I'm glad I built in: if the sensor ever goes quiet, the board says <em>"no reading"</em> instead of freezing on the last angle it saw. A wind needle stuck at a confident, wrong number is worse than an honest blank.</div>
+    <div class="lane">
+      <div class="lane-label">Speed</div>
+      <div class="node"><div class="t">D1 pulse</div><div class="s">rising edge</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">count</div><div class="s">500 ms</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">frequency</div><div class="s">Hz</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">× K</div><div class="s">0.5144 m/s/Hz</div></div>
+    </div>
+    <div class="lane">
+      <div class="lane-label">Output</div>
+      <div class="node out"><div class="t">PGN 130306</div><div class="s">apparent · 10 Hz · src 35</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">SignalK</div><div class="s">WiFi · environment.wind.*</div></div>
+    </div>
   </div>
-</section>
 
-<!-- 3 — The build -->
-<section id="build">
-  <div class="wrap wide">
-    <h2>The build</h2>
-    <p>The brains is a <b>Hat Labs HALMET</b> — a small board that's happy with the rough voltages on a boat, reads the sensor with a precise 16-bit voltmeter chip, and plugs straight into the NMEA 2000 backbone, drawing its own power from it. Three wires from the existing mast cable go in: sine, cosine, and the speed pulse. That's the whole connection.</p>
-    <table>
-      <thead><tr><th>Wire</th><th>Signal</th><th>Goes to</th></tr></thead>
-      <tbody>
-        <tr><td><span class="swatch" style="background:#cc2b2b"></span>Red</td><td>+8.0 V supply</td><td>buck OUT+</td></tr>
-        <tr><td><span class="swatch" style="background:#9aa7b0"></span>Screen</td><td>0 V / ground</td><td>shared ground</td></tr>
-        <tr><td><span class="swatch" style="background:#2b6fd6"></span>Blue</td><td>sine</td><td>A1</td></tr>
-        <tr><td><span class="swatch" style="background:#2faa55"></span>Green</td><td>cosine</td><td>A2</td></tr>
-        <tr><td><span class="swatch" style="background:#f2b134"></span>Yellow</td><td>speed pulse</td><td>D1 · GPIO23</td></tr>
-      </tbody>
-    </table>
-    <p style="margin-top:1.2em">The sensor wants 8 volts, which the board doesn't hand out, so that comes from a small adjustable power supply. This is the one place it's easy to ruin everything:</p>
-    <div class="callout"><b>⚠ Set the power supply to 8.0 V before anything else.</b> These cheap adjustable supplies arrive set to around 20 V — more than enough to cook the sensor. Dial it down to 8.0 V with a meter, with nothing connected to the output, and only then let the red wire anywhere near it.</div>
-  </div>
-</section>
-
-<!-- 4 — What it took -->
-<section id="parts" class="alt">
-  <div class="wrap wide">
-    <h2>What it took</h2>
-    <p>Almost nothing here is new. The vane, its cable, and the boat's network were all already up and running — that was the whole appeal. In the end I bought two things.</p>
-    <table>
-      <thead><tr><th>Part</th><th>What it's for</th><th>Where</th></tr></thead>
-      <tbody>
-        <tr><td><b>Hat Labs HALMET</b></td><td>the bridge — reads the vane &amp; cups, speaks NMEA 2000, hosts the web page</td><td><a href="https://shop.hatlabs.fi/products/halmet">shop.hatlabs.fi</a></td></tr>
-        <tr><td><b>Adjustable buck converter</b><br><span style="color:var(--muted);font-size:.84rem">with a voltage display</span></td><td>steps the boat's 12 V down to the vane's <b>8.0 V</b> — set it <em>before</em> wiring</td><td><a href="https://www.amazon.de/dp/B0D8T9HDR7">amazon.de</a></td></tr>
-        <tr><td><b>Raymarine ST60+ wind vane</b><br><span style="color:var(--muted);font-size:.84rem">already on the boat</span></td><td>the existing sensor up the mast — reusing it was the entire point</td><td>—</td></tr>
-        <tr><td>Inline fuse &amp; wire</td><td>a ~1 A fuse on the buck's 12 V input, and three taps off the existing cable</td><td>—</td></tr>
-      </tbody>
-    </table>
-    <p style="margin-top:1.2em" class="muted">…and the firmware, which is free and open-source — it's all in the repo.</p>
-  </div>
-</section>
-
-<!-- 5 — Tuning by sailing -->
-<section id="tune">
-  <div class="wrap wide">
-    <h2>Tuning it by sailing</h2>
-    <p>Once it was wired, none of the fine-tuning needed a laptop. The board hosts its own little web page, so everything you'd want to adjust — which way is forward, which direction it rotates, the speed scale — is just a number you type into a browser. I set the zero by sighting down the boat, and flipped the rotation with a single setting when it first read backwards. The angle I dialled in by letting the vane spin freely and logging the readings; the speed I checked against GPS on a calm day.</p>
-    <p>It only ever reports <em>apparent</em> wind — the wind you actually feel on deck. I deliberately left "true wind" for the Orca to work out, so there's one honest source and nothing on the network fighting over the same number. The same readings also go out over WiFi to SignalK, so the tablet and any SignalK gauge can show them too.</p>
-    <p class="muted" style="margin-bottom:.6em">And the part that does the actual sending is about as boring as it should be:</p>
-    <pre><span class="c-cm">// Every 100 ms: package the latest calibrated wind reading and send it.</span>
+  <p>Calibration is live, in a web page the board serves itself — no reflash. Four values: angle offset, rotation direction (one sign flip if it reads backwards), the two channel centre voltages, and the speed scale (0.5144&nbsp;m/s per Hz for the egg-cup ST60+; ~0.36 for the older square-cup). I set the angle from a logged free rotation and the speed against GPS in calm air.</p>
+  <p>It outputs apparent wind only. True wind is left to the chartplotter, so there's a single wind source on the bus rather than two devices computing and broadcasting it. A magnitude check on sin/cos reports no-data instead of a stuck angle if the sensor goes quiet.</p>
+  <p>The transmit itself is unremarkable — every 100&nbsp;ms it builds the PGN from the latched values and sends it:</p>
+  <pre><code><span class="c-cm">// every 100 ms</span>
 event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</span>, []() {
   tN2kMsg msg;
   <span class="c-key">double</span> awa = <span class="c-fn">isfinite</span>(last_awa_rad)
@@ -221,34 +187,25 @@ event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</spa
       : N2kDoubleNA;
   <span class="c-key">double</span> aws = <span class="c-fn">isfinite</span>(last_aws_mps) ? last_aws_mps : N2kDoubleNA;
   <span class="c-fn">SetN2kWindSpeed</span>(msg, sid, aws, awa, <span class="c-key">N2kWind_Apparent</span>);
-  nmea2000-&gt;<span class="c-fn">SendMsg</span>(msg);   <span class="c-cm">// → onto the backbone</span>
-});</pre>
-  </div>
+  nmea2000-&gt;<span class="c-fn">SendMsg</span>(msg);
+});</code></pre>
 </section>
 
-<!-- 6 — Where it ended up -->
-<section id="result" class="alt">
-  <div class="wrap">
-    <h2>Where it ended up</h2>
-    <p>It works. Direction and speed are back on the Orca, the same numbers land in SignalK over WiFi for the tablet, and the whole thing updates ten times a second — from a sensor everyone had already written off. I tested it on the bench first, then watched it come alive properly the first time a gust hit the masthead on the water.</p>
-    <p>The display that died is in a drawer somewhere. The sensor it left deaf is doing exactly what it always did. It just needed someone new to listen.</p>
-    <p class="muted" style="font-size:.98rem">Under the hood it's an ESP32 running the SensESP framework, the NMEA2000 library doing the network side, and an ADS1115 doing the careful measuring — all open source. If you want the wiring, the calibration notes, or the whole firmware, it's on <a href="https://github.com/den200/halmet-wind-vane">GitHub</a>.</p>
-  </div>
+<section id="result">
+  <h2>Result</h2>
+  <p>Output is PGN 130306 at 10&nbsp;Hz from source address 35, plus <code>environment.wind.angleApparent</code> and <code>speedApparent</code> on SignalK over WiFi. Verified on the bus with <code>candump</code> and on the Orca Core 2; bench-tested first, then on the water. The N2K identity is set to a wind sensor (function 130, class 85) with an unregistered manufacturer code, so it doesn't collide with a real product.</p>
+  <p>Full source, the wiring guide, and the firmware are on <a href="https://github.com/den200/halmet-wind-vane">GitHub</a>, Apache-2.0.</p>
 </section>
+
+</div>
+</main>
 
 <footer>
-  <div class="wrap wide">
-    <div>
-      <h4>HALMET Wind</h4>
-      <p style="max-width:42ch">Open-source firmware that gives a Raymarine ST60+ wind vane a second life on NMEA 2000.</p>
-      <p class="fine">Apache 2.0 licensed, like the Hat Labs firmware it builds on. Hardware by Hat Labs. Built with Claude Code. Not affiliated with Raymarine or Orca.</p>
-    </div>
-    <div>
-      <h4>Links</h4>
-      <p><a href="https://github.com/den200/halmet-wind-vane">Source &amp; firmware →</a></p>
-      <p><a href="https://github.com/den200/halmet-wind-vane/blob/main/docs/WIRING.md">Wiring &amp; power guide →</a></p>
-      <p><a href="https://hatlabs.fi/">Hat Labs HALMET →</a></p>
-    </div>
+  <div class="wrap">
+    <a href="https://github.com/den200/halmet-wind-vane">GitHub</a>
+    <a href="https://github.com/den200/halmet-wind-vane/blob/main/docs/WIRING.md">Wiring guide</a>
+    <a href="https://hatlabs.fi/">Hat Labs</a>
+    <span>· Apache-2.0 · not affiliated with Raymarine or Orca</span>
   </div>
 </footer>
 
