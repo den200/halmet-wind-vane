@@ -176,7 +176,8 @@
     </div>
   </div>
 
-  <p>Calibration is live, in a web page the board serves itself — no reflash. Four values: angle offset, rotation direction (one sign flip if it reads backwards), the two channel centre voltages, and the speed scale (0.5144&nbsp;m/s per Hz for the egg-cup ST60+; ~0.36 for the older square-cup). I set the angle from a logged free rotation and the speed against GPS in calm air.</p>
+  <p>Four calibration values are exposed live, in a web page the board serves itself — no reflash: angle offset, rotation direction (one sign flip if it reads backwards), the two channel centre voltages, and the speed scale (default 0.5144&nbsp;m/s per Hz for the egg-cup ST60+; ~0.36 for the older square-cup). In practice I didn't touch any of them. It read correctly on the first try — the vane was already aligned on the mast from its original installation, and the defaults matched the sensor, so 0° was at the bow and the speed was right out of the box. No mast trip, no bench sweep.</p>
+  <p>If a sensor does need centring, the centres can be recovered from data instead of by hand. Log the raw sin/cos over one slow full circle under motor, and <code>tools/ellipse_fit.py</code> fits an ellipse to the sin/cos cloud and prints the four numbers to enter. That part is offline — a script you run on a laptop, not an on-device auto-calibration routine. The math is there; it was never wired into the firmware to run itself, and I never needed it.</p>
   <p>It outputs apparent wind only. True wind is left to the chartplotter, so there's a single wind source on the bus rather than two devices computing and broadcasting it. A magnitude check on sin/cos reports no-data instead of a stuck angle if the sensor goes quiet.</p>
   <p>The transmit itself is unremarkable — every 100&nbsp;ms it builds the PGN from the latched values and sends it:</p>
   <pre><code><span class="c-cm">// every 100 ms</span>
@@ -195,6 +196,7 @@ event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</spa
   <h2>Result</h2>
   <p>Output is PGN 130306 at 10&nbsp;Hz from source address 35, plus <code>environment.wind.angleApparent</code> and <code>speedApparent</code> on SignalK over WiFi. Verified on the bus with <code>candump</code> and on the Orca Core 2; bench-tested first, then on the water. The N2K identity is set to a wind sensor (function 130, class 85) with an unregistered manufacturer code, so it doesn't collide with a real product.</p>
   <p>Full source, the wiring guide, and the firmware are on <a href="https://github.com/den200/halmet-wind-vane">GitHub</a>, Apache-2.0.</p>
+  <p>The firmware and this page were both written with <a href="https://claude.com/claude-code">Claude Code</a> (Anthropic).</p>
 </section>
 
 </div>
@@ -202,10 +204,8 @@ event_loop()-&gt;<span class="c-fn">onRepeat</span>(<span class="c-num">100</spa
 
 <footer>
   <div class="wrap">
-    <a href="https://github.com/den200/halmet-wind-vane">GitHub</a>
-    <a href="https://github.com/den200/halmet-wind-vane/blob/main/docs/WIRING.md">Wiring guide</a>
-    <a href="https://hatlabs.fi/">Hat Labs</a>
-    <span>· Apache-2.0 · not affiliated with Raymarine or Orca</span>
+    <p>Firmware and this writeup were built with <a href="https://claude.com/claude-code">Claude Code</a> (Anthropic). Apache-2.0. Not affiliated with Raymarine or Orca.</p>
+    <p><a href="https://github.com/den200/halmet-wind-vane">GitHub</a><a href="https://github.com/den200/halmet-wind-vane/blob/main/docs/WIRING.md">Wiring guide</a><a href="https://hatlabs.fi/">Hat Labs</a></p>
   </div>
 </footer>
 

@@ -1,5 +1,7 @@
 // HALMET wind interface — V1 (NMEA 2000 PGN 130306).
 //
+// Written with Claude Code (Anthropic). Licensed under Apache-2.0.
+//
 // STEP 5: NMEA 2000 transmit (the V1 deliverable). Adds the wind-sensor N2K
 // node and transmits PGN 130306 (Wind Data, Apparent) every 100 ms from the
 // latched angle/speed. Device identity is a wind sensor (Function 130 /
