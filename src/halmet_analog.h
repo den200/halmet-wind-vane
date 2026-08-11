@@ -18,13 +18,18 @@ sensesp::FloatProducer* ConnectTankSender(Adafruit_ADS1115* ads1115,
 
 class ADS1115VoltageInput : public sensesp::FloatSensor {
  public:
+  // A single-ended conversion takes ~7.8 ms at the ADS1115's default 128 SPS.
+  // 25 ms is three times that, and bounds how long a broken bus can stall the
+  // event loop.
+  static constexpr uint32_t kConversionTimeoutMs = 25;
+
   ADS1115VoltageInput(Adafruit_ADS1115* ads1115, int channel,
                       const String& config_path,
                       unsigned int read_interval = 500,
                       float calibration_factor = 1.0)
       : sensesp::FloatSensor(config_path),
         ads1115_{ads1115},
-        channel_{channel},
+        channel_{channel < 0 ? 0 : (channel > 3 ? 3 : channel)},
         read_interval_{read_interval},
         calibration_factor_{calibration_factor} {
     load();
@@ -33,8 +38,28 @@ class ADS1115VoltageInput : public sensesp::FloatSensor {
   }
 
   void update() {
-    int16_t adc_output = ads1115_->readADC_SingleEnded(channel_);
-    float adc_output_volts = ads1115_->computeVolts(adc_output);
+    // Deliberately not Adafruit's readADC_SingleEnded(): it busy-waits on
+    // conversionComplete() with no timeout, and a failed I2C read makes that
+    // condition false forever. readRegister() puts the register pointer (0x01)
+    // in buffer[0] before the transfer and leaves it there when the read is not
+    // ACKed, so the config word comes back as 0x01xx with the OS bit clear. One
+    // loose SDA wire -- or an ADS1115 that was already missing at boot -- would
+    // hang the whole board inside this 500 ms task: no N2K, no web UI, no
+    // SignalK, until the watchdog rebooted it straight back into the same hang.
+    ads1115_->startADCReading(MUX_BY_CHANNEL[channel_], /*continuous=*/false);
+    const uint32_t started = millis();
+    while (!ads1115_->conversionComplete()) {
+      // Unsigned subtraction, so this stays correct across millis() rollover.
+      if (millis() - started > kConversionTimeoutMs) {
+        // No-data beats a stale or invented voltage. NAN propagates through the
+        // centering transform, fails the plausibility window in main.cpp, and
+        // is caught by the angle transform's finite check.
+        this->emit(NAN);
+        return;
+      }
+    }
+    float adc_output_volts =
+        ads1115_->computeVolts(ads1115_->getLastConversionResults());
     this->emit(calibration_factor_ * kVoltageDividerScale * adc_output_volts);
   }
 

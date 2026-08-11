@@ -27,13 +27,21 @@ whose display head died but whose sensor is still healthy — and republishes
 
 | Pipeline | Chain |
 |---|---|
-| **Angle** | A1/A2 (sin/cos) → ADS1115 16-bit → per-channel centring → `atan2(sin,cos)` (NaN-guarded) → MovingAverage(5) → AWA |
+| **Angle** | A1/A2 (sin/cos) → ADS1115 16-bit → per-channel centring → moving average **of the sin/cos vector** (5) → `atan2(sin,cos)` → raw-voltage validity gate → AWA |
 | **Speed** | D1 pulse → DigitalInputCounter (RISING, 500 ms) → Frequency → × K (m/s per Hz) → AWS |
 | **Output** | latched values → NMEA 2000 PGN 130306 @ 10 Hz **and** SignalK `environment.wind.*` |
 
 The vane encodes its angle as two ratiometric voltages (sine and cosine);
 recovering the angle is `atan2(sin, cos)`. Since `atan2` is scale-invariant,
 calibration only needs to **centre** each channel — see [`src/sin_cos_angle_transform.h`](src/sin_cos_angle_transform.h).
+
+Two details there are deliberate. Smoothing averages the **sin/cos vector**, not
+the emitted angle: averaging the angle breaks at the ±π wrap, where samples
+alternate between ≈ +179° and ≈ −179° and mean to 0°, so dead astern would read
+as dead ahead. And the no-data check watches the **raw terminal voltage**
+(Blue/Green must be inside 2–6 V), not the computed magnitude: an unpowered
+transducer puts both channels at 0 V, which centres to a large, perfectly steady
+vector and yields a convincing, unchanging −135°.
 
 ## Wiring (summary)
 
@@ -69,6 +77,7 @@ All tunables persist to flash and are editable at `http://halmet-wind.local/`:
 - **Angle offset** (`offset_rad`) — align vane zero to the bow.
 - **Angle direction** (`sin_sign`) — `+1` normal, `−1` if wind reads backward.
 - **Per-channel centring** — set each sin/cos midpoint (≈ Vmid).
+- **Smoothing** (`samples`) — sin/cos samples averaged before the angle is computed; 5 ≈ a 2.5 s window at the ~2 Hz sample rate.
 - **Speed multiplier K** — `0.5144` m/s·Hz⁻¹ for egg-cup ST60+ (~1 kn/Hz), ~`0.36` square-cup.
 
 With the mast up, derive the sin/cos centres by ellipse-fit on logged free-rotation
@@ -85,7 +94,13 @@ Manufacturer **2046** (unregistered), preferred source address **35**.
 pio run -e halmet              # build
 pio run -e halmet -t upload    # flash over USB
 pio device monitor -b 115200   # serial
+tools/run_host_tests.sh        # angle-transform regression tests, on the laptop
 ```
+
+`src/sin_cos_angle_transform.h` is pure math over a thin SensESP base, so it is
+compiled against minimal stubs in [`test/host/`](test/host/) and exercised on a
+laptop — full circle accuracy, behaviour through the ±π wrap, NaN recovery,
+sign/offset handling and config clamping. No board required.
 
 SensESP v3 on PlatformIO (pioarduino platform), NMEA 2000 via the ESP32 TWAI
 driver, ADS1115 via Adafruit ADS1X15. Board target `esp32dev`.
