@@ -22,8 +22,8 @@
 #include "sensesp/signalk/signalk_output.h"
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp/transforms/frequency.h"
+#include "sensesp/transforms/lambda_transform.h"
 #include "sensesp/transforms/linear.h"
-#include "sensesp/transforms/moving_average.h"
 #include "sensesp/transforms/throttle.h"
 #include "sensesp/ui/config_item.h"
 #include "sensesp_app_builder.h"
@@ -56,6 +56,19 @@ static float last_awa_rad = NAN;
 static float last_hz = NAN;
 static float last_aws_mps = NAN;
 
+// Raw-voltage plausibility window for the sin/cos channels, at the terminal.
+// Raymarine specs Blue and Green at 2-6 V against the screen; a healthy ST60+
+// sits at 2.5-5.5 V. This is the only reliable way to spot an unpowered,
+// shorted or disconnected transducer: with both channels sitting at 0 V the
+// centered vector is large and perfectly steady, so the magnitude guard inside
+// SinCosAngle sees nothing wrong and happily reports a convincing -135°.
+static constexpr float kSensorVMin = 2.0f;
+static constexpr float kSensorVMax = 6.0f;
+static bool sin_v_ok = false;
+static bool cos_v_ok = false;
+
+static inline bool sensor_plausible() { return sin_v_ok && cos_v_ok; }
+
 // PGN 130306 sequence id + transmit counters (bench visibility).
 static uint8_t sid = 0;
 static uint32_t n2k_tx_ok = 0;
@@ -71,74 +84,127 @@ static void add_help_card(const char* path, const char* title,
       ->set_sort_order(sort_order);
 }
 
-// Wiring/power/calibration reference, shown as cards in the web UI. The
-// descriptions are rendered as HTML by the frontend. Full version: docs/WIRING.md.
-// Sort 1000+ places them between the System cards and the calibration cards.
+// Shared inline styles for the help cards. The SensESP frontend renders a
+// ConfigItem description as HTML but gives us no stylesheet hook, so every rule
+// has to travel inline on the element.
+#define HN_UL "margin:.45em 0 .2em;padding-left:1.15em"
+#define HN_LI "margin:.22em 0"
+#define HN_TD "padding:5px 10px 5px 0;vertical-align:top"
+#define HN_SW                                                       \
+  "display:inline-block;width:11px;height:11px;border-radius:3px;"  \
+  "margin-right:8px;border:1px solid rgba(128,128,128,.45)"
+#define HN_KEY "font-weight:600;white-space:nowrap"
+
+// Wiring/power/calibration reference, shown as cards in the web UI. Full
+// version: docs/WIRING.md. Sort 999+ places them between the System cards and
+// the calibration cards; the numbered titles give them a reading order.
 static void add_help_cards() {
   add_help_card(
-      "/help/1-power", "⚠ Power & the 8 V buck — read first",
-      "<b style='color:#c0392b'>The buck converter ships at ~20 V output. The "
-      "masthead needs 8.0 V — 20 V can destroy it.</b><br><br>"
-      "With <b>nothing connected to the buck output</b>:"
-      "<ul>"
-      "<li>Power the buck from 12 V (input side).</li>"
-      "<li>Turn the <b>trim pot</b> until a <b>multimeter</b> reads "
-      "<b>8.0 V</b> (±0.25). Don't trust the LED meter alone.</li>"
-      "<li>If the output won't drop below the input, turn the pot "
-      "<b>counter-clockwise 10+ turns</b> first.</li>"
-      "<li>The push-button 'calibration' only trims the LED display, not the "
-      "output — the output is set by the <b>pot</b>.</li>"
-      "</ul>"
-      "<b>Power:</b> HALMET runs off the NMEA 2000 backbone. Feed the buck "
-      "input from boat 12 V via a ~1 A fuse. Buck OUT+ &rarr; transducer Red.",
+      "/help/0-start", "Wind interface — start here",
+      R"HTML(<p style="margin:0 0 .5em">Raymarine ST60+ masthead vane read into
+NMEA 2000 as PGN 130306 (apparent wind), plus SignalK over WiFi.</p>
+<p style="margin:0 0 .3em">Work through the cards in order:</p>
+<ol style=")HTML" HN_UL R"HTML(">
+<li style=")HTML" HN_LI R"HTML("><b>Power</b> — set the buck to 8.0 V <i>before</i>
+anything is connected to it.</li>
+<li style=")HTML" HN_LI R"HTML("><b>Grounding</b> — one shared ground node.</li>
+<li style=")HTML" HN_LI R"HTML("><b>Wiring</b> — five wires, three jumpers.</li>
+<li style=")HTML" HN_LI R"HTML("><b>Calibration</b> — the cards below this one.
+All live; no reflash.</li>
+</ol>
+<p style="margin:.5em 0 0">Angle 0&deg; is the bow, positive clockwise from
+above. Apparent wind only — true wind is left to the plotter.</p>)HTML",
+      999);
+  add_help_card(
+      "/help/1-power", "1 · Power and the 8 V buck — read first",
+      R"HTML(<p style="margin:0 0 .5em;padding:8px 11px;border-left:3px solid #c0392b;
+background:rgba(192,57,43,.08);border-radius:0 4px 4px 0"><b>The buck converter
+ships at about 20 V output. The masthead needs 8.0 V — 20 V can destroy
+it.</b></p>
+<p style="margin:0 0 .2em">With <b>nothing connected to the buck output</b>:</p>
+<ul style=")HTML" HN_UL R"HTML(">
+<li style=")HTML" HN_LI R"HTML(">Power the buck from 12 V on the input side.</li>
+<li style=")HTML" HN_LI R"HTML(">Turn the <b>trim pot</b> until a <b>multimeter</b>
+reads <b>8.0 V</b> (&plusmn;0.25). Don't trust the LED meter alone.</li>
+<li style=")HTML" HN_LI R"HTML(">If the output won't drop below the input, turn the
+pot <b>counter-clockwise 10+ turns</b> first.</li>
+<li style=")HTML" HN_LI R"HTML(">The push-button marked "calibration" trims the LED
+display only. The <b>pot</b> sets the output.</li>
+</ul>
+<p style="margin:.5em 0 0">HALMET itself runs off the NMEA 2000 backbone. Feed
+the buck input from boat 12 V through a ~1 A fuse; buck OUT+ goes to the
+transducer's Red wire.</p>)HTML",
       1000);
   add_help_card(
-      "/help/2-ground", "Grounding (important)",
-      "Sin/cos are measured <b>relative to HALMET's input ground</b>, so the "
-      "transducer's ground must be that same node. Tie together at one point:"
-      "<ul>"
-      "<li>Buck OUT&minus; (= buck IN&minus;; these modules are non-isolated)</li>"
-      "<li>Transducer Screen / bare wire</li>"
-      "<li>HALMET's <b>input-side GND</b> (ground terminal on the analog-input "
-      "side)</li>"
-      "</ul>"
-      "Without this shared reference the angle reads garbage.<br>"
-      "<b>Do not</b> tie the sensor ground to HALMET's N2K-connector ground — "
-      "the board isolates the sensor inputs from the bus on purpose.",
+      "/help/2-ground", "2 · Grounding",
+      R"HTML(<p style="margin:0 0 .2em">Sin and cos are measured <b>relative to
+HALMET's input ground</b>, so the transducer's ground has to be that same node.
+Tie these together at one point:</p>
+<ul style=")HTML" HN_UL R"HTML(">
+<li style=")HTML" HN_LI R"HTML(">Buck OUT&minus; (= buck IN&minus;; these modules are
+non-isolated)</li>
+<li style=")HTML" HN_LI R"HTML(">Transducer Screen / bare wire</li>
+<li style=")HTML" HN_LI R"HTML("><b>HALMET input-side GND</b> — the ground terminal
+on the analog-input side</li>
+</ul>
+<p style="margin:.5em 0 0">Without that shared reference the angle reads
+garbage. <b>Do not</b> tie the sensor ground to HALMET's N2K-connector ground:
+the board isolates the sensor inputs from the bus on purpose.</p>)HTML",
       1001);
   add_help_card(
-      "/help/3-wiring", "Transducer wires & jumpers",
-      "<b>Raymarine ST60+ masthead &rarr; HALMET:</b>"
-      "<ul>"
-      "<li>Red &rarr; buck +8 V</li>"
-      "<li>Screen/bare &rarr; shared sensor ground (see Grounding)</li>"
-      "<li>Blue (sine) &rarr; A1</li>"
-      "<li>Green (cosine) &rarr; A2</li>"
-      "<li>Yellow (speed pulse) &rarr; D1</li>"
-      "</ul>"
-      "<b>Jumpers:</b>"
-      "<ul>"
-      "<li>A1 &amp; A2: constant-current-source (CCS) <b>OFF</b> (passive "
-      "voltage mode)</li>"
-      "<li>D1: no pull-up; engage the 2.3 kHz low-pass only if you see noise</li>"
-      "<li>On-board 120 &Omega; CAN termination: <b>OPEN</b> (backbone already "
-      "terminated)</li>"
-      "</ul>"
-      "If the angle reads backward after calibration, set <b>sin_sign = "
-      "&minus;1</b> on the Wind angle card.",
+      "/help/3-wiring", "3 · Transducer wires and jumpers",
+      R"HTML(<p style="margin:0 0 .4em">Raymarine ST60+ masthead &rarr; HALMET:</p>
+<table style="border-collapse:collapse;margin:0 0 .7em"><tbody>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML("><span style=")HTML" HN_SW
+      R"HTML(;background:#cc2b2b"></span>Red</td>
+<td style=")HTML" HN_TD R"HTML(">+8.0 V from the buck</td></tr>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML("><span style=")HTML" HN_SW
+      R"HTML(;background:#9aa7b0"></span>Screen</td>
+<td style=")HTML" HN_TD R"HTML(">shared sensor ground (see Grounding)</td></tr>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML("><span style=")HTML" HN_SW
+      R"HTML(;background:#2b6fd6"></span>Blue</td>
+<td style=")HTML" HN_TD R"HTML(">sine &rarr; <b>A1</b></td></tr>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML("><span style=")HTML" HN_SW
+      R"HTML(;background:#2faa55"></span>Green</td>
+<td style=")HTML" HN_TD R"HTML(">cosine &rarr; <b>A2</b></td></tr>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML("><span style=")HTML" HN_SW
+      R"HTML(;background:#f2b134"></span>Yellow</td>
+<td style=")HTML" HN_TD R"HTML(">speed pulse &rarr; <b>D1</b> (GPIO23, rising
+edge)</td></tr>
+</tbody></table>
+<p style="margin:0 0 .2em">Jumpers:</p>
+<ul style=")HTML" HN_UL R"HTML(">
+<li style=")HTML" HN_LI R"HTML(">A1 and A2 constant-current source (CCS):
+<b>OFF</b> — this is passive voltage sensing</li>
+<li style=")HTML" HN_LI R"HTML(">D1: no pull-up. Engage the 2.3 kHz low-pass only
+if you see noise</li>
+<li style=")HTML" HN_LI R"HTML(">On-board 120 &Omega; CAN termination: <b>OPEN</b>
+— the backbone is already terminated at both ends</li>
+</ul>
+<p style="margin:.5em 0 0">If the angle reads backward once calibrated, set
+<b>Angle direction sign</b> to &minus;1 on the Wind angle card. Swapping Blue
+and Green does the same thing in hardware.</p>)HTML",
       1002);
   add_help_card(
-      "/help/4-calibrate", "Calibration",
-      "All values below are live — no reflash."
-      "<ul>"
-      "<li><b>Speed multiplier K:</b> 0.5144 for the egg-cup ST60+ (~1 kn/Hz); "
-      "~0.36 for square-cup. Trim against GPS in calm air.</li>"
-      "<li><b>Per-channel centering:</b> free-rotate the vane, watch sin/cos "
-      "volts, set each offset so the midpoint &asymp; Vmid (~4.0 V).</li>"
-      "<li><b>Angle offset:</b> set so 0&deg; = bow.</li>"
-      "<li><b>Angle direction (sin_sign):</b> +1 normal, &minus;1 if it reads "
-      "backward.</li>"
-      "</ul>",
+      "/help/4-calibrate", "4 · Calibration — what the cards below do",
+      R"HTML(<p style="margin:0 0 .4em">Every value below is live and persisted to
+flash. No reflash, no reboot.</p>
+<table style="border-collapse:collapse;margin:0"><tbody>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML(">Speed multiplier K</td>
+<td style=")HTML" HN_TD R"HTML(">0.5144 for the egg-cup ST60+ (about 1 kn/Hz);
+~0.36 for the older square-cup. Trim against GPS SOG in calm air.</td></tr>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML(">Channel centering</td>
+<td style=")HTML" HN_TD R"HTML(">Free-rotate the vane, watch the sin/cos volts on
+the serial console, and set each offset so the midpoint lands on Vmid
+(&asymp;4.0 V). <code>tools/ellipse_fit.py</code> derives all four numbers from a
+logged rotation.</td></tr>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML(">Angle offset</td>
+<td style=")HTML" HN_TD R"HTML(">Rotates the whole scale so 0&deg; sits on the
+bow.</td></tr>
+<tr><td style=")HTML" HN_TD ";" HN_KEY R"HTML(">Angle direction</td>
+<td style=")HTML" HN_TD R"HTML(">+1 normal, &minus;1 if the wind reads backward.
+Clockwise-from-above is correct.</td></tr>
+</tbody></table>)HTML",
       1003);
 }
 
@@ -174,13 +240,28 @@ void setup() {
   auto* ch_sin = new ADS1115VoltageInput(ads, 0, "/wind/sin", 500);
   auto* ch_cos = new ADS1115VoltageInput(ads, 1, "/wind/cos", 500);
   ConfigItem(ch_sin)
-      ->set_title("Sin channel (A1) voltage trim")
+      ->set_title("Angle · A1 sine — input voltage trim")
+      ->set_description("Multiplier on the terminal voltage read from A1. Leave "
+                        "at 1.0 unless the reported volts disagree with a "
+                        "multimeter at the terminal.")
       ->set_sort_order(2000);
   ConfigItem(ch_cos)
-      ->set_title("Cos channel (A2) voltage trim")
+      ->set_title("Angle · A2 cosine — input voltage trim")
+      ->set_description("Multiplier on the terminal voltage read from A2. Leave "
+                        "at 1.0 unless the reported volts disagree with a "
+                        "multimeter at the terminal.")
       ->set_sort_order(2001);
-  ch_sin->connect_to(new LambdaConsumer<float>([](float v) { last_sin_v = v; }));
-  ch_cos->connect_to(new LambdaConsumer<float>([](float v) { last_cos_v = v; }));
+  // Connected before the calibration chain below, and Observable notifies in
+  // connection order, so the plausibility flags are current by the time the
+  // centered value reaches SinCosAngle.
+  ch_sin->connect_to(new LambdaConsumer<float>([](float v) {
+    last_sin_v = v;
+    sin_v_ok = isfinite(v) && v >= kSensorVMin && v <= kSensorVMax;
+  }));
+  ch_cos->connect_to(new LambdaConsumer<float>([](float v) {
+    last_cos_v = v;
+    cos_v_ok = isfinite(v) && v >= kSensorVMin && v <= kSensorVMax;
+  }));
 
   // Per-channel centering: terminal volts → (V − Vmid)/amplitude. The offset
   // (−Vmid·slope) sets the midpoint; atan2 is scale-invariant so the slope only
@@ -188,46 +269,59 @@ void setup() {
   auto* sin_cal = new Linear(1.0f / 1.5f, -4.0f / 1.5f, "/wind/sin/cal");
   auto* cos_cal = new Linear(1.0f / 1.5f, -4.0f / 1.5f, "/wind/cos/cal");
   ConfigItem(sin_cal)
-      ->set_title("Sin centering (slope, −Vmid·slope)")
-      ->set_description("Default slope 1/1.5, offset −4.0/1.5 (Vmid≈4.0 V). "
-                        "Refine offset from logged free-rotation data.")
+      ->set_title("Angle · A1 sine — centering")
+      ->set_description(
+          "Maps terminal volts onto a unit sine. Slope = 1/amplitude, offset = "
+          "−Vmid/amplitude. Defaults are 1/1.5 and −4.0/1.5, i.e. Vmid 4.0 V "
+          "swinging ±1.5 V. Refine from a logged free rotation.")
       ->set_sort_order(2002);
   ConfigItem(cos_cal)
-      ->set_title("Cos centering (slope, −Vmid·slope)")
-      ->set_description("Default slope 1/1.5, offset −4.0/1.5 (Vmid≈4.0 V).")
+      ->set_title("Angle · A2 cosine — centering")
+      ->set_description(
+          "Same mapping for the cosine channel. Slope = 1/amplitude, offset = "
+          "−Vmid/amplitude. Both channels share one Vmid on a healthy sensor.")
       ->set_sort_order(2003);
   ch_sin->connect_to(sin_cal);
   ch_cos->connect_to(cos_cal);
 
-  // atan2(sin, cos). CALIBRATION PARAMS: angle offset (align zero) + sin_sign
-  // (flip if wind reads backward). offset/sign/gain live in this transform.
-  auto* angle = new SinCosAngle(1.0f, 0.0f, 0.05f, 1.0f, "/wind/angle/cal");
+  // atan2(sin, cos), with the smoothing done on the sin/cos vector inside the
+  // transform — averaging the emitted angle instead would break at the ±π wrap
+  // and report dead astern as dead ahead. CALIBRATION PARAMS: angle offset
+  // (align zero), sin_sign (flip if wind reads backward), smoothing samples.
+  auto* angle =
+      new SinCosAngle(1.0f, 0.0f, 0.05f, 1.0f, 5, "/wind/angle/cal");
   ConfigItem(angle)
-      ->set_title("Wind angle (offset + direction)")
-      ->set_description("offset_rad aligns the vane zero to the boat centerline; "
-                        "sin_sign = −1 if the wind reads backward.")
+      ->set_title("Angle · zero offset, direction and smoothing")
+      ->set_description(
+          "Angle offset (rad) rotates the scale so 0° sits on the bow. "
+          "Direction sign is +1 normally, −1 if the wind reads backward — "
+          "clockwise from above is correct. Smoothing averages the sin/cos "
+          "vector, so it stays correct through dead astern.")
       ->set_sort_order(2100);
   sin_cal->connect_to(&angle->sin_input());
   cos_cal->connect_to(&angle->cos_input());
 
-  auto* angle_smooth = new MovingAverage(5, 1.0f, "/wind/angle/smooth");
-  ConfigItem(angle_smooth)
-      ->set_title("Angle smoothing (samples)")
-      ->set_sort_order(2101);
-  angle->connect_to(angle_smooth);
-  angle_smooth->connect_to(
+  // Validity gate: hold the angle at no-data while the raw sin/cos volts are
+  // outside the plausible window. Placed after the transform so both the N2K
+  // and SignalK outputs see the same gated value.
+  auto* awa_gate = new LambdaTransform<float, float>(
+      [](float rad) { return sensor_plausible() ? rad : NAN; });
+  angle->connect_to(awa_gate);
+  awa_gate->connect_to(
       new LambdaConsumer<float>([](float v) { last_awa_rad = v; }));
 
   // V2: SignalK apparent wind angle. SK wants rad in −π..+π (negative to port,
-  // 0 = bow) — exactly what angle_smooth already emits; the N2K path does its
-  // own 0..2π conversion, so both outputs share one calibration. The SK server
+  // 0 = bow) — exactly what the gate emits; the N2K path does its own 0..2π
+  // conversion, so both outputs share one calibration. The SK server
   // connection + auth are handled entirely by SensESP's built-in SignalK page;
   // we only add the producer. Throttle caps the WebSocket rate — a no-op at our
   // ~2 Hz sample rate, but it guards the socket if sampling is ever sped up.
+  // ArduinoJson is built with ARDUINOJSON_ENABLE_NAN=0, so a gated-out NaN goes
+  // on the wire as JSON null — which is what SignalK means by no data.
   auto* awa_meta =
       new SKMetadata("rad", "Apparent Wind Angle",
                      "Apparent wind angle, negative to port, 0 = bow", "AWA");
-  angle_smooth->connect_to(new Throttle<float>(100))
+  awa_gate->connect_to(new Throttle<float>(100))
       ->connect_to(new SKOutputFloat("environment.wind.angleApparent",
                                      "/wind/angle/sk", awa_meta));
 
@@ -238,12 +332,16 @@ void setup() {
   // (egg-cup ST60+); ~0.36 for square-cup. Set empirically.
   auto* speed_cal = new Linear(0.5144f, 0.0f, "/wind/speed/cal");
   ConfigItem(freq)
-      ->set_title("Pulse frequency multiplier")
+      ->set_title("Speed · pulse frequency multiplier")
+      ->set_description("Scales the measured pulse rate itself. Leave at 1.0 — "
+                        "calibrate wind speed on the card below instead, so "
+                        "the reported Hz stays a true pulse rate.")
       ->set_sort_order(2200);
   ConfigItem(speed_cal)
-      ->set_title("Speed multiplier K (m/s per Hz)")
-      ->set_description("Default 0.5144 ≈ 1 knot/Hz (egg-cup). ~0.36 for "
-                        "square-cup. Calibrate against GPS in calm air.")
+      ->set_title("Speed · multiplier K (m/s per Hz)")
+      ->set_description("Default 0.5144 ≈ 1 knot/Hz (egg-cup ST60+); ~0.36 for "
+                        "the older square-cup. Calibrate against GPS SOG in "
+                        "calm air.")
       ->set_sort_order(2201);
   tach->connect_to(freq)->connect_to(speed_cal);
   freq->connect_to(new LambdaConsumer<float>([](float v) { last_hz = v; }));
@@ -316,10 +414,11 @@ void setup() {
     float awa_deg =
         isfinite(last_awa_rad) ? last_awa_rad * 180.0f / (float)M_PI : NAN;
     ESP_LOGI(kTag,
-             "tick %lu  sin=%.3fV cos=%.3fV  AWA=%.4f rad (%.1f deg)  "
+             "tick %lu  sin=%.3fV cos=%.3fV [%s]  AWA=%.4f rad (%.1f deg)  "
              "pulse=%.1f Hz  AWS=%.2f m/s  n2k_tx=%lu fail=%lu",
-             (unsigned long)beat++, last_sin_v, last_cos_v, last_awa_rad,
-             awa_deg, last_hz, last_aws_mps, (unsigned long)n2k_tx_ok,
+             (unsigned long)beat++, last_sin_v, last_cos_v,
+             sensor_plausible() ? "ok" : "OUT OF RANGE", last_awa_rad, awa_deg,
+             last_hz, last_aws_mps, (unsigned long)n2k_tx_ok,
              (unsigned long)n2k_tx_fail);
   });
 }
