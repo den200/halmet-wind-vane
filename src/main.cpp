@@ -64,10 +64,22 @@ static float last_aws_mps = NAN;
 // SinCosAngle sees nothing wrong and happily reports a convincing -135°.
 static constexpr float kSensorVMin = 2.0f;
 static constexpr float kSensorVMax = 6.0f;
-static bool sin_v_ok = false;
-static bool cos_v_ok = false;
 
-static inline bool sensor_plausible() { return sin_v_ok && cos_v_ok; }
+// False for NaN too, so an ADS read that timed out fails the window as well.
+static inline bool volts_plausible(float v) {
+  return v >= kSensorVMin && v <= kSensorVMax;
+}
+static inline bool angle_volts_ok() {
+  return volts_plausible(last_sin_v) && volts_plausible(last_cos_v);
+}
+// Finite volts outside the window mean the transducer itself has no 8 V, is
+// shorted or is unplugged — and then its pulse output is dead too, so the 0 Hz
+// on Yellow is a lie, not calm air. NaN means the ADS did not answer, a
+// board-side fault that says nothing about the cups, so speed is left alone.
+static inline bool transducer_dead() {
+  return (isfinite(last_sin_v) && !volts_plausible(last_sin_v)) ||
+         (isfinite(last_cos_v) && !volts_plausible(last_cos_v));
+}
 
 // PGN 130306 sequence id + transmit counters (bench visibility).
 static uint8_t sid = 0;
@@ -252,16 +264,22 @@ void setup() {
                         "multimeter at the terminal.")
       ->set_sort_order(2001);
   // Connected before the calibration chain below, and Observable notifies in
-  // connection order, so the plausibility flags are current by the time the
-  // centered value reaches SinCosAngle.
-  ch_sin->connect_to(new LambdaConsumer<float>([](float v) {
-    last_sin_v = v;
-    sin_v_ok = isfinite(v) && v >= kSensorVMin && v <= kSensorVMax;
-  }));
-  ch_cos->connect_to(new LambdaConsumer<float>([](float v) {
-    last_cos_v = v;
-    cos_v_ok = isfinite(v) && v >= kSensorVMin && v <= kSensorVMax;
-  }));
+  // connection order, so the latched volts are current by the time the speed
+  // gate and the 1 Hz report look at them.
+  ch_sin->connect_to(new LambdaConsumer<float>([](float v) { last_sin_v = v; }));
+  ch_cos->connect_to(new LambdaConsumer<float>([](float v) { last_cos_v = v; }));
+
+  // Validity gate, per channel and BEFORE the centering: an implausible or
+  // missing reading becomes NaN here, and NaN is the one input SinCosAngle
+  // already handles completely — it clears its smoothing window and emits
+  // no-data, so both outputs see NaN and no garbage sample survives inside the
+  // average to blend into the first angles after the transducer comes back.
+  // Gating the emitted angle instead left the window full of centred 0 V
+  // samples, i.e. several cycles of a convincing wrong angle on every recovery.
+  auto* sin_gate = new LambdaTransform<float, float>(
+      [](float v) { return volts_plausible(v) ? v : NAN; });
+  auto* cos_gate = new LambdaTransform<float, float>(
+      [](float v) { return volts_plausible(v) ? v : NAN; });
 
   // Per-channel centering: terminal volts → (V − Vmid)/amplitude. The offset
   // (−Vmid·slope) sets the midpoint; atan2 is scale-invariant so the slope only
@@ -281,8 +299,8 @@ void setup() {
           "Same mapping for the cosine channel. Slope = 1/amplitude, offset = "
           "−Vmid/amplitude. Both channels share one Vmid on a healthy sensor.")
       ->set_sort_order(2003);
-  ch_sin->connect_to(sin_cal);
-  ch_cos->connect_to(cos_cal);
+  ch_sin->connect_to(sin_gate)->connect_to(sin_cal);
+  ch_cos->connect_to(cos_gate)->connect_to(cos_cal);
 
   // atan2(sin, cos), with the smoothing done on the sin/cos vector inside the
   // transform — averaging the emitted angle instead would break at the ±π wrap
@@ -301,18 +319,12 @@ void setup() {
   sin_cal->connect_to(&angle->sin_input());
   cos_cal->connect_to(&angle->cos_input());
 
-  // Validity gate: hold the angle at no-data while the raw sin/cos volts are
-  // outside the plausible window. Placed after the transform so both the N2K
-  // and SignalK outputs see the same gated value.
-  auto* awa_gate = new LambdaTransform<float, float>(
-      [](float rad) { return sensor_plausible() ? rad : NAN; });
-  angle->connect_to(awa_gate);
-  awa_gate->connect_to(
+  angle->connect_to(
       new LambdaConsumer<float>([](float v) { last_awa_rad = v; }));
 
   // V2: SignalK apparent wind angle. SK wants rad in −π..+π (negative to port,
-  // 0 = bow) — exactly what the gate emits; the N2K path does its own 0..2π
-  // conversion, so both outputs share one calibration. The SK server
+  // 0 = bow) — exactly what the transform emits; the N2K path does its own
+  // 0..2π conversion, so both outputs share one calibration. The SK server
   // connection + auth are handled entirely by SensESP's built-in SignalK page;
   // we only add the producer. Throttle caps the WebSocket rate — a no-op at our
   // ~2 Hz sample rate, but it guards the socket if sampling is ever sped up.
@@ -321,7 +333,7 @@ void setup() {
   auto* awa_meta =
       new SKMetadata("rad", "Apparent Wind Angle",
                      "Apparent wind angle, negative to port, 0 = bow", "AWA");
-  awa_gate->connect_to(new Throttle<float>(100))
+  angle->connect_to(new Throttle<float>(100))
       ->connect_to(new SKOutputFloat("environment.wind.angleApparent",
                                      "/wind/angle/sk", awa_meta));
 
@@ -343,16 +355,21 @@ void setup() {
                         "the older square-cup. Calibrate against GPS SOG in "
                         "calm air.")
       ->set_sort_order(2201);
-  tach->connect_to(freq)->connect_to(speed_cal);
+  // Speed gate: no-data while the sin/cos rails say the transducer is dead
+  // (see transducer_dead()). The raw pulse rate stays on the 1 Hz report, so
+  // the bench PWM test still shows its Hz with nothing on A1/A2.
+  auto* aws_gate = new LambdaTransform<float, float>(
+      [](float mps) { return transducer_dead() ? NAN : mps; });
+  tach->connect_to(freq)->connect_to(speed_cal)->connect_to(aws_gate);
   freq->connect_to(new LambdaConsumer<float>([](float v) { last_hz = v; }));
-  speed_cal->connect_to(
+  aws_gate->connect_to(
       new LambdaConsumer<float>([](float v) { last_aws_mps = v; }));
 
   // V2: SignalK apparent wind speed (m/s). No throttle needed — the 500 ms
   // counter window already limits this to ~2 Hz.
   auto* aws_meta = new SKMetadata("m/s", "Apparent Wind Speed", "", "AWS");
-  speed_cal->connect_to(new SKOutputFloat("environment.wind.speedApparent",
-                                          "/wind/speed/sk", aws_meta));
+  aws_gate->connect_to(new SKOutputFloat("environment.wind.speedApparent",
+                                         "/wind/speed/sk", aws_meta));
 
   // ----- Bench test signal (jumper GPIO33 → D1 to verify counting) -----
   if (kEnableTestPwm) {
@@ -417,7 +434,7 @@ void setup() {
              "tick %lu  sin=%.3fV cos=%.3fV [%s]  AWA=%.4f rad (%.1f deg)  "
              "pulse=%.1f Hz  AWS=%.2f m/s  n2k_tx=%lu fail=%lu",
              (unsigned long)beat++, last_sin_v, last_cos_v,
-             sensor_plausible() ? "ok" : "OUT OF RANGE", last_awa_rad, awa_deg,
+             angle_volts_ok() ? "ok" : "OUT OF RANGE", last_awa_rad, awa_deg,
              last_hz, last_aws_mps, (unsigned long)n2k_tx_ok,
              (unsigned long)n2k_tx_fail);
   });

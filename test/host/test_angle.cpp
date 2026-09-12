@@ -85,10 +85,16 @@ int main() {
     bool good_before = isfinite(r.last());
     r.feed_raw(NAN, 0.0f);
     bool nan_emitted = !isfinite(r.last());
+    // The upstream raw-volt gate in main.cpp relies on this: NaN must clear the
+    // window, so the very first sample after recovery is already correct and
+    // no pre-fault sample blends into it.
+    r.feed(0);
+    bool first_clean = isfinite(r.last()) && fabs(deg(r.last())) < 0.01;
     for (int i = 0; i < 5; i++) r.feed(90);
     bool recovered = isfinite(r.last()) && fabs(deg(r.last()) - 90) < 0.01;
     check(good_before, "finite before the NaN");
     check(nan_emitted, "NaN in -> NaN out");
+    check(first_clean, "window cleared: first sample after NaN is exact", deg(r.last()), 0);
     check(recovered, "recovers to 90 deg afterwards", deg(r.last()), 90);
   }
 
@@ -102,7 +108,7 @@ int main() {
     check(isfinite(r.last()),
           "magnitude guard does NOT catch it (why the raw-volt gate exists)",
           deg(r.last()), 0);
-    printf("     reports a steady %.1f deg — this is what the gate in main.cpp blocks\n",
+    printf("     reports a steady %.1f deg — main.cpp turns such volts into NaN before they get here\n",
            deg(r.last()));
   }
 
@@ -120,6 +126,16 @@ int main() {
     Rig wrap(1, 1.0f, (float)rad(90));
     wrap.feed(170);   // 170 + 90 = 260 -> must wrap to -100
     check(fabs(deg(wrap.last()) + 100) < 0.01, "offset wraps past pi correctly", deg(wrap.last()), -100);
+
+    Rig neg(1, 1.0f, (float)rad(-90));
+    neg.feed(-170);   // -170 - 90 = -260 -> must wrap to +100
+    check(fabs(deg(neg.last()) - 100) < 0.01, "negative offset wraps past -pi correctly", deg(neg.last()), 100);
+
+    // A fat-fingered offset must not hang the board (the old while-loop did).
+    Rig huge(1, 1.0f, 1e30f);
+    huge.feed(45);
+    check(isfinite(huge.last()) && fabs(huge.last()) <= M_PI + 1e-6,
+          "offset 1e30 still yields a finite angle in [-pi, pi]", huge.last(), 0);
   }
 
   // ---- G. samples config round-trip ----------------------------------------
@@ -149,6 +165,31 @@ int main() {
     a.to_json(back);
     check((int)back["samples"] == 1, "missing samples key leaves it alone",
           (double)(int)back["samples"], 1);
+  }
+
+  // ---- H. sign and gain are sanitised --------------------------------------
+  {
+    printf("H. sign/gain sanitising\n");
+    SinCosAngle zero_sign(1.0f, 0.0f, 0.05f, 0.0f, 1);
+    float got = NAN;
+    zero_sign.on_emit = [&](float v) { got = v; };
+    zero_sign.sin_input().set((float)sin(rad(45)));
+    zero_sign.cos_input().set((float)cos(rad(45)));
+    check(fabs(deg(got) - 45) < 0.01, "sin_sign 0 is treated as +1", deg(got), 45);
+
+    JsonObject j;
+    j["sin_sign"] = -0.3f;   // any negative value means "flip"
+    zero_sign.from_json(j);
+    zero_sign.sin_input().set((float)sin(rad(45)));
+    zero_sign.cos_input().set((float)cos(rad(45)));
+    check(fabs(deg(got) + 45) < 0.01, "sin_sign -0.3 is treated as -1", deg(got), -45);
+
+    SinCosAngle zero_gain(0.0f, 0.0f, 0.05f, 1.0f, 1);
+    float g = NAN;
+    zero_gain.on_emit = [&](float v) { g = v; };
+    zero_gain.sin_input().set((float)sin(rad(30)));
+    zero_gain.cos_input().set((float)cos(rad(30)));
+    check(isfinite(g) && fabs(deg(g) - 30) < 0.01, "gain 0 falls back to 1 (no permanent NaN)", deg(g), 30);
   }
 
   printf("\n%s (%d failure%s)\n", failures ? "TESTS FAILED" : "ALL TESTS PASSED",

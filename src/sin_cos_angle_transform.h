@@ -8,7 +8,7 @@
 
 namespace sensesp {
 
-// Two-input transform: emits atan2(sin, cos) as an angle in (-π, +π].
+// Two-input transform: emits atan2(sin, cos) as an angle in [-π, +π].
 // Uses the "member-consumer" pattern (a LambdaConsumer per input) to take two
 // float inputs without multiple inheritance.
 //
@@ -26,8 +26,12 @@ namespace sensesp {
 // Live-calibration parameters (all exposed via ConfigItem):
 //   offset_rad    align the vane zero with the boat centerline.
 //   sin_sign      +1 normal; set -1 if the wind reads backward (flips handedness
-//                 — equivalent to swapping the Blue/Green wires).
+//                 — equivalent to swapping the Blue/Green wires). Any value is
+//                 reduced to its sign: 0 would zero the sine and pin the angle
+//                 to 0° or 180° while looking perfectly valid.
 //   gain          common scale on both axes (cosmetic; atan2 is scale-invariant).
+//                 Must be > 0; anything else falls back to 1 (0 would trip the
+//                 magnitude guard forever, negative would rotate by 180°).
 //   min_magnitude magnitude below which the angle is treated as invalid (NaN).
 //   samples       vector smoothing window, in samples; 1 disables smoothing.
 //
@@ -42,8 +46,9 @@ class SinCosAngle : public Transform<float, float> {
               float min_magnitude = 0.05f, float sin_sign = 1.0f,
               int samples = 5, const String& config_path = "")
       : Transform<float, float>(config_path),
-        gain_(gain), offset_rad_(offset_rad), min_magnitude_(min_magnitude),
-        sin_sign_(sin_sign), samples_(clamp_samples(samples)),
+        gain_(norm_gain(gain)), offset_rad_(offset_rad),
+        min_magnitude_(min_magnitude), sin_sign_(norm_sign(sin_sign)),
+        samples_(clamp_samples(samples)),
         sin_consumer_([this](float v){ sin_value_=v; fresh_sin_=true; recompute(); }),
         cos_consumer_([this](float v){ cos_value_=v; fresh_cos_=true; recompute(); }) {
     this->load();
@@ -64,10 +69,10 @@ class SinCosAngle : public Transform<float, float> {
     return true;
   }
   bool from_json(const JsonObject& root) override {
-    if (root["gain"].is<float>())          gain_          = root["gain"];
+    if (root["gain"].is<float>())          gain_          = norm_gain((float)root["gain"]);
     if (root["offset_rad"].is<float>())    offset_rad_    = root["offset_rad"];
     if (root["min_magnitude"].is<float>()) min_magnitude_ = root["min_magnitude"];
-    if (root["sin_sign"].is<float>())      sin_sign_      = root["sin_sign"];
+    if (root["sin_sign"].is<float>())      sin_sign_      = norm_sign((float)root["sin_sign"]);
     // Absent on configs saved before smoothing moved in here; keep the default.
     if (root["samples"].is<int>()) {
       const int n = clamp_samples(root["samples"]);
@@ -85,6 +90,8 @@ class SinCosAngle : public Transform<float, float> {
     if (n > kMaxSamples) return kMaxSamples;
     return n;
   }
+  static float norm_sign(float v) { return v < 0.0f ? -1.0f : 1.0f; }
+  static float norm_gain(float g) { return g > 0.0f ? g : 1.0f; }
 
   void reset_window() {
     ptr_ = 0;
@@ -121,10 +128,12 @@ class SinCosAngle : public Transform<float, float> {
       this->emit(NAN); return;
     }
 
-    float theta = atan2f(s, c) + offset_rad_;
-    while (theta >  M_PI) theta -= 2.0f * M_PI;
-    while (theta <= -M_PI) theta += 2.0f * M_PI;
-    this->emit(theta);
+    // IEEE remainder folds into [-π, +π] in one step whatever the offset. The
+    // obvious "while (theta > π) theta -= 2π" is a trap: a fat-fingered offset
+    // like 1e30 never changes under float subtraction, the loop never ends, the
+    // watchdog reboots the board, the saved config brings it straight back.
+    constexpr float kTwoPi = 2.0f * (float)M_PI;
+    this->emit(remainderf(atan2f(s, c) + offset_rad_, kTwoPi));
   }
 
   float gain_, offset_rad_, min_magnitude_, sin_sign_;
