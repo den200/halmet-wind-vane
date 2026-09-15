@@ -17,6 +17,7 @@
 #include <NMEA2000_esp32.h>
 #include <Wire.h>
 #include <esp_log.h>
+#include <esp_ota_ops.h>
 
 #include "sensesp/sensors/digital_input.h"
 #include "sensesp/signalk/signalk_output.h"
@@ -28,11 +29,13 @@
 #include "sensesp/ui/config_item.h"
 #include "sensesp_app_builder.h"
 
+#include "firmware_update.h"         // /update page + /api/firmware OTA
 #include "halmet_const.h"             // pin map, ADS address
 #include "halmet_analog.h"            // ADS1115VoltageInput, kVoltageDividerScale
 #include "halmet_serial.h"            // GetBoardSerialNumber()
 #include "help_note.h"                // read-only web-UI help cards
 #include "sin_cos_angle_transform.h"  // SinCosAngle
+#include "version.h"                  // FW_VERSION
 
 using namespace sensesp;
 using namespace halmet;
@@ -218,6 +221,22 @@ bow.</td></tr>
 Clockwise-from-above is correct.</td></tr>
 </tbody></table>)HTML",
       1003);
+  add_help_card(
+      "/help/5-update", "5 · Firmware update — from your phone",
+      R"HTML(<p style="margin:0 0 .4em">Running firmware <b>v)HTML" FW_VERSION
+      R"HTML(</b>. New versions are published as GitHub releases; you flash them
+from this page over Wi-Fi, no cable or laptop needed:</p>
+<p style="margin:0 0 .5em"><a href="/update"><b>Open the firmware update
+page &rarr;</b></a></p>
+<ul style=")HTML" HN_UL R"HTML(">
+<li style=")HTML" HN_LI R"HTML(">Download the <code>.bin</code> from the release
+(on mobile data if the boat Wi-Fi is offline), then pick it on that page.</li>
+<li style=")HTML" HN_LI R"HTML(">The image is verified before the board switches
+to it; a broken upload is refused and the current firmware keeps running.</li>
+<li style=")HTML" HN_LI R"HTML(">Calibration and Wi-Fi settings survive the
+update — they live in a separate flash partition.</li>
+</ul>)HTML",
+      1004);
 }
 
 void setup() {
@@ -229,6 +248,8 @@ void setup() {
 
   // Wiring/power/calibration help, shown as read-only cards in the web UI.
   add_help_cards();
+  // Browser OTA: /update page, /api/firmware GET (info) and POST (flash).
+  add_firmware_update_handlers();
 
   // ----- I2C + ADS1115 -----
   // GAIN_ONE = ±4.096 V FS at the ADS pin. Masthead sin/cos swing ~2.5-5.5 V
@@ -387,7 +408,7 @@ void setup() {
   nmea2000 = new tNMEA2000_esp32(kCANTxPin, kCANRxPin);
   nmea2000->SetN2kCANSendFrameBufSize(150);
   nmea2000->SetN2kCANReceiveFrameBufSize(150);
-  nmea2000->SetProductInformation("20260601", 140, "HALMET Wind", "1.0.0",
+  nmea2000->SetProductInformation("20260601", 140, "HALMET Wind", FW_VERSION,
                                   "1.0.0");
   nmea2000->SetDeviceInformation(GetBoardSerialNumber(),
                                  130,    // Function: Atmospheric
@@ -423,7 +444,9 @@ void setup() {
     sid = (sid >= 252) ? 0 : sid + 1;
   });
 
-  ESP_LOGI(kTag, "HALMET wind scaffold booted — angle + speed + N2K up");
+  ESP_LOGI(kTag, "HALMET wind v%s (%s %s, slot %s) booted — angle + speed + N2K up",
+           FW_VERSION, __DATE__, __TIME__,
+           esp_ota_get_running_partition()->label);
 
   // 1 Hz report: raw sin/cos volts, computed angle, pulse Hz, speed, tx counts.
   event_loop()->onRepeat(1000, []() {
