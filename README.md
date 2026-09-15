@@ -96,7 +96,7 @@ Manufacturer **2046** (unregistered), preferred source address **35**.
 
 ```bash
 pio run -e halmet              # build
-pio run -e halmet -t upload    # flash over USB
+pio run -e halmet -t upload    # flash over USB (first time only; then OTA, see below)
 pio device monitor -b 115200   # serial
 tools/run_host_tests.sh        # angle-transform regression tests, on the laptop
 ```
@@ -108,6 +108,30 @@ sign/offset handling and config clamping. No board required.
 
 SensESP v3 on PlatformIO (pioarduino platform), NMEA 2000 via the ESP32 TWAI
 driver, ADS1115 via Adafruit ADS1X15. Board target `esp32dev`.
+
+## Updating firmware from a phone (OTA)
+
+The USB flash is needed once. After that the board updates itself from a
+browser at `http://halmet-wind.local/update` (also linked from the config
+page), over the boat Wi-Fi or the board's own access point:
+
+1. Bump `FW_VERSION` in `src/version.h`, commit, tag `v<version>`, push the tag.
+   [GitHub Actions](.github/workflows/firmware.yml) builds and attaches
+   `halmet-wind-v<version>.bin` (+ `.sha256`) to a release. It refuses to
+   publish if the tag and `FW_VERSION` disagree.
+2. On the phone, open the update page and press **Check latest release**. It
+   asks the GitHub API from the browser and links the `.bin`. If the boat Wi-Fi
+   has no internet, download the file on mobile data first — it lands in Files.
+3. Pick the file, press **Flash**. The board writes it into the spare OTA slot,
+   verifies the image (segment checksums and the SHA-256 the build appends),
+   only then marks it bootable, and reboots. The page waits and shows the new
+   version once it is back. Wind data pauses for about ten seconds.
+
+A truncated or wrong file is refused before the switch — the first bytes are
+checked for the ESP32 image magic and chip id, and the whole image is verified
+at the end — so the running firmware keeps running. If a new image ever fails
+to boot, the bootloader rolls back to the previous slot on the next reset.
+Calibration and Wi-Fi settings live in their own partition and survive updates.
 
 ## Validation
 
