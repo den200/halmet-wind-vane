@@ -360,7 +360,25 @@ void setup() {
   // the bench PWM test still shows its Hz with nothing on A1/A2.
   auto* aws_gate = new LambdaTransform<float, float>(
       [](float mps) { return transducer_dead() ? NAN : mps; });
-  tach->connect_to(freq)->connect_to(speed_cal)->connect_to(aws_gate);
+  // Sliding mean of the last 4 pulse rates (2 s). A 500 ms window counts whole
+  // pulses, so a single reading moves in 2 Hz steps — about 2 kn of AWS
+  // flicker at K ≈ 1 kn/Hz. Four windows cut the step to 0.5 Hz and still
+  // update every 500 ms. Re-summed each time, like SinCosAngle, rather than a
+  // running accumulator. SensESP's MovingAverage is one, and it divides by a
+  // sample size the web UI can set to 0.
+  auto* hz_mean = new LambdaTransform<float, float>([](float hz) {
+    static constexpr int kN = 4;
+    static float buf[kN];
+    static int ptr = 0, filled = 0;
+    buf[ptr] = hz;
+    ptr = (ptr + 1) % kN;
+    if (filled < kN) filled++;
+    float sum = 0.0f;
+    for (int i = 0; i < filled; i++) sum += buf[i];
+    return sum / filled;
+  });
+  tach->connect_to(freq)->connect_to(hz_mean)->connect_to(speed_cal)
+      ->connect_to(aws_gate);
   freq->connect_to(new LambdaConsumer<float>([](float v) { last_hz = v; }));
   aws_gate->connect_to(
       new LambdaConsumer<float>([](float v) { last_aws_mps = v; }));
