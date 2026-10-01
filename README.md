@@ -22,6 +22,12 @@ whose display head died but whose sensor is still healthy — and republishes
 - **V2 (secondary):** publishes the same calibrated values to SignalK over WiFi
   (`environment.wind.angleApparent` / `speedApparent`), so any SignalK plugin or
   web app (KIP, Freeboard, instrument panels, loggers) can display them once installed.
+- **Boat time server:** answers NTP on UDP 123 (`halmet-wind.local`) with the GNSS
+  time from **PGN 126992** on the backbone, so computers without a battery clock
+  get the right date at boot, offshore too. Only GNSS-sourced 126992 dated 2026 or
+  later is trusted, two consecutive messages must agree, and it stays silent when
+  it has no fix (or none for 10 min) so clients fall back to their next server.
+  Android: `settings put global ntp_server "ntp://halmet-wind.local|ntp://time.android.com"`.
 
 ## How it works
 

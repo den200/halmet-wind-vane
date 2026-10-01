@@ -30,6 +30,7 @@
 #include "sensesp_app_builder.h"
 
 #include "firmware_update.h"         // /update page + /api/firmware OTA
+#include "gps_time_server.h"         // NTP on UDP 123 from N2K GPS time
 #include "halmet_const.h"             // pin map, ADS address
 #include "halmet_analog.h"            // ADS1115VoltageInput, kVoltageDividerScale
 #include "halmet_serial.h"            // GetBoardSerialNumber()
@@ -439,6 +440,8 @@ void setup() {
   nmea2000->EnableForward(false);
   static const unsigned long kTxPGNs[] PROGMEM = {130306L, 0};
   nmea2000->ExtendTransmitMessages(kTxPGNs);
+  // NTP for the boat LAN from the GNSS's PGN 126992 (see gps_time_server.h).
+  GpsTimeServer::instance().begin(nmea2000);
   if (nmea2000->Open()) {
     ESP_LOGI(kTag, "NMEA2000 opened — wind sensor src 35, TX PGN 130306");
   } else {
@@ -476,11 +479,15 @@ void setup() {
         isfinite(last_awa_rad) ? last_awa_rad * 180.0f / (float)M_PI : NAN;
     ESP_LOGI(kTag,
              "tick %lu  sin=%.3fV cos=%.3fV [%s]  AWA=%.4f rad (%.1f deg)  "
-             "pulse=%.1f Hz  AWS=%.2f m/s  n2k_tx=%lu fail=%lu",
+             "pulse=%.1f Hz  AWS=%.2f m/s  n2k_tx=%lu fail=%lu  "
+             "gps_time=%s age=%ds ntp_served=%lu",
              (unsigned long)beat++, last_sin_v, last_cos_v,
              angle_volts_ok() ? "ok" : "OUT OF RANGE", last_awa_rad, awa_deg,
              last_hz, last_aws_mps, (unsigned long)n2k_tx_ok,
-             (unsigned long)n2k_tx_fail);
+             (unsigned long)n2k_tx_fail,
+             GpsTimeServer::instance().locked() ? "locked" : "none",
+             GpsTimeServer::instance().age_s(),
+             (unsigned long)GpsTimeServer::instance().served());
   });
 }
 
