@@ -60,13 +60,16 @@ static float last_hz = NAN;
 static float last_aws_mps = NAN;
 
 // Raw-voltage plausibility window for the sin/cos channels, at the terminal.
-// Raymarine specs Blue and Green at 2-6 V against the screen; a healthy ST60+
-// sits at 2.5-5.5 V. This is the only reliable way to spot an unpowered,
+// Raymarine specs Blue and Green at 2-6 V against the screen, but this unit's
+// sine peaks at 6.1 V on the 8 V supply, and a 6.0 V ceiling blanked angle AND
+// speed for ~20 % of seconds. The faults this exists to catch sit at 0 V
+// (unpowered/open) or the 8 V rail (shorted), so 7.0 V keeps full margin on
+// both sides. This is the only reliable way to spot an unpowered,
 // shorted or disconnected transducer: with both channels sitting at 0 V the
 // centered vector is large and perfectly steady, so the magnitude guard inside
 // SinCosAngle sees nothing wrong and happily reports a convincing -135°.
 static constexpr float kSensorVMin = 2.0f;
-static constexpr float kSensorVMax = 6.0f;
+static constexpr float kSensorVMax = 7.0f;
 
 // False for NaN too, so an ADS read that timed out fails the window as well.
 static inline bool volts_plausible(float v) {

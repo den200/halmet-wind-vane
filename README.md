@@ -27,7 +27,7 @@ whose display head died but whose sensor is still healthy — and republishes
 
 | Pipeline | Chain |
 |---|---|
-| **Angle** | A1/A2 (sin/cos) → ADS1115 16-bit → raw-voltage validity gate (2–6 V, else NaN) → per-channel centring → moving average **of the sin/cos vector** (5) → `atan2(sin,cos)` → AWA |
+| **Angle** | A1/A2 (sin/cos) → ADS1115 16-bit → raw-voltage validity gate (2–7 V, else NaN) → per-channel centring → moving average **of the sin/cos vector** (5) → `atan2(sin,cos)` → AWA |
 | **Speed** | D1 pulse → DigitalInputCounter (RISING, 500 ms) → Frequency → × K (m/s per Hz) → no-data while the sin/cos rails show a dead transducer → AWS |
 | **Output** | latched values → NMEA 2000 PGN 130306 @ 10 Hz **and** SignalK `environment.wind.*` |
 
@@ -39,7 +39,7 @@ Two details there are deliberate. Smoothing averages the **sin/cos vector**, not
 the emitted angle: averaging the angle breaks at the ±π wrap, where samples
 alternate between ≈ +179° and ≈ −179° and mean to 0°, so dead astern would read
 as dead ahead. And the no-data check watches the **raw terminal voltage**
-(Blue/Green must be inside 2–6 V), not the computed magnitude: an unpowered
+(Blue/Green must be inside 2–7 V), not the computed magnitude: an unpowered
 transducer puts both channels at 0 V, which centres to a large, perfectly steady
 vector and yields a convincing, unchanging −135°. The gate sits **before** the
 smoothing, turning a bad reading into NaN, which clears the averaging window —
